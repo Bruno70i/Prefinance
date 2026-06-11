@@ -41,29 +41,19 @@
         <div class="kpi-sub">Clique para ver todas</div>
       </div>
       
-      <div class="kpi-card" :class="{ 'active-filter': statusFilter === 'Aprovado' }" @click="statusFilter = 'Aprovado'">
+      <div class="kpi-card" :class="{ 'active-filter': statusFilter === 'Ativa' }" @click="statusFilter = 'Ativa'">
         <div class="kpi-top">
           <div class="kpi-icon-box" style="background:#dcfce7">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </div>
           <span class="kpi-trend trend-up">Ativas</span>
         </div>
-        <div class="kpi-value">{{ countByStatus('Aprovado') }}</div>
+        <div class="kpi-value">{{ countByStatus('Ativa') }}</div>
         <div class="kpi-label">Parcerias Ativas</div>
         <div class="kpi-sub">Clique para filtrar</div>
       </div>
       
-      <div class="kpi-card" :class="{ 'active-filter': statusFilter === 'Pendente' }" @click="statusFilter = 'Pendente'">
-        <div class="kpi-top">
-          <div class="kpi-icon-box" style="background:#fee2e2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <span class="kpi-trend trend-warn">Urgente</span>
-        </div>
-        <div class="kpi-value">{{ countByStatus('Pendente') }}</div>
-        <div class="kpi-label">Prestações Pendentes</div>
-        <div class="kpi-sub">Clique para filtrar</div>
-      </div>
+
       
       <div class="kpi-card" style="cursor:default">
         <div class="kpi-top">
@@ -87,9 +77,9 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="filter-pill" :class="{ active: statusFilter === 'todos' }" @click="statusFilter = 'todos'">Todos</button>
-          <button class="filter-pill" :class="{ active: statusFilter === 'Aprovado' }" @click="statusFilter = 'Aprovado'"><span style="width:7px;height:7px;background:#16a34a;border-radius:50%;display:inline-block"></span>Aprovada</button>
+          <button class="filter-pill" :class="{ active: statusFilter === 'Ativa' }" @click="statusFilter = 'Ativa'"><span style="width:7px;height:7px;background:#16a34a;border-radius:50%;display:inline-block"></span>Ativa</button>
           <button class="filter-pill" :class="{ active: statusFilter === 'Em Análise' }" @click="statusFilter = 'Em Análise'"><span style="width:7px;height:7px;background:#ca8a04;border-radius:50%;display:inline-block"></span>Em Análise</button>
-          <button class="filter-pill" :class="{ active: statusFilter === 'Pendente' }" @click="statusFilter = 'Pendente'"><span style="width:7px;height:7px;background:#dc2626;border-radius:50%;display:inline-block"></span>Pendente</button>
+
         </div>
       </div>
       
@@ -183,7 +173,13 @@ const filteredEntities = computed(() => {
   let list = entitiesList.value
 
   if (statusFilter.value !== 'todos') {
-    list = list.filter(e => e.situacao === statusFilter.value)
+    if (statusFilter.value === 'Ativa') {
+      list = list.filter(e => getBadgeClass(e.situacao || '') === 'badge-ativa')
+    } else if (statusFilter.value === 'Em Análise') {
+      list = list.filter(e => getBadgeClass(e.situacao || '') === 'badge-em_analise')
+    } else {
+      list = list.filter(e => e.situacao === statusFilter.value)
+    }
   }
 
   if (searchQuery.value) {
@@ -199,15 +195,29 @@ const filteredEntities = computed(() => {
   return list
 })
 
-function countByStatus(status: string) {
-  return entitiesList.value.filter(e => e.situacao === status).length
+function countByStatus(filterType: string) {
+  if (filterType === 'Ativa') {
+    return entitiesList.value.filter(e => getBadgeClass(e.situacao || '') === 'badge-ativa').length
+  }
+  return entitiesList.value.filter(e => e.situacao === filterType).length
 }
 
 const totalVolume = computed(() => {
-  // Apenas simulação de cálculo se houvesse repasses na listagem base
-  // Poderia iterar sobre entidades e somar um campo "valor_total"
   return entitiesList.value.reduce((acc, entity) => {
-    return acc + (Number(entity.configuracoes_extras?.valor) || 0)
+    // Tenta usar entity.valor direto, faz fallback pra configuracoes_extras.valor se existir legado
+    const valStr = entity.valor !== undefined && entity.valor !== null ? entity.valor : (entity.configuracoes_extras?.valor || 0)
+    
+    if (typeof valStr === 'string') {
+      // Remove tudo exceto números, vírgula e ponto
+      let cleanStr = valStr.replace(/[^\d.,]/g, '')
+      // Se tiver vírgula (formato brasileiro 1.000,50)
+      if (cleanStr.includes(',')) {
+        cleanStr = cleanStr.replace(/\./g, '') // remove pontos de milhar
+        cleanStr = cleanStr.replace(',', '.')  // troca vírgula decimal por ponto
+      }
+      return acc + (parseFloat(cleanStr) || 0)
+    }
+    return acc + (Number(valStr) || 0)
   }, 0)
 })
 
@@ -218,9 +228,8 @@ function formatCurrency(val: number) {
 function getBadgeClass(status: string) {
   if (!status) return 'badge-encerrada'
   const st = status.toLowerCase()
-  if (st.includes('aprovado') || st.includes('ativa')) return 'badge-ativa'
+  if (st.includes('fomento') || st.includes('colaboração') || st.includes('colaboracao') || st.includes('convenio') || st.includes('convênio') || st.includes('aprovado') || st.includes('ativa')) return 'badge-ativa'
   if (st.includes('análise') || st.includes('formalização')) return 'badge-em_analise'
-  if (st.includes('pendente')) return 'badge-pendente'
   return 'badge-encerrada'
 }
 </script>

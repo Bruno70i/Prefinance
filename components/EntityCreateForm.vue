@@ -49,22 +49,25 @@
             <div class="card-body">
               <div class="form-grid form-grid-3">
                 <div>
-                  <label class="field-label">Nº do Processo / PA</label>
+                  <label class="field-label">PA Emenda</label>
                   <input type="text" v-model="form.pa_formalizacao" placeholder="Ex: PA-2025/0042"/>
                 </div>
                 <div>
-                  <label class="field-label">Situação<span class="field-required">*</span></label>
+                  <label class="field-label">Tipo de Instrumento<span class="field-required">*</span></label>
                   <select v-model="form.situacao" required>
                     <option value="">Selecione…</option>
-                    <option value="Em Análise">Em Análise</option>
-                    <option value="Aprovado">Aprovado</option>
-                    <option value="Em Formalização">Em Formalização</option>
-                    <option value="Pendente">Pendente</option>
+                    <option value="TERMO DE FOMENTO">TERMO DE FOMENTO</option>
+                    <option value="TERMO DE COLABORAÇÃO">TERMO DE COLABORAÇÃO</option>
+                    <option value="CONVENIO">CONVENIO</option>
                   </select>
                 </div>
                 <div>
                   <label class="field-label">Número da Emenda</label>
                   <input type="text" v-model="form.numero_emenda" placeholder="Ex: Emenda 01/2025"/>
+                </div>
+                <div>
+                  <label class="field-label">Valor (R$)<span class="field-required">*</span></label>
+                  <input type="text" :value="valorExibicao" @input="handleValorInput" placeholder="R$ 0,00" required />
                 </div>
               </div>
             </div>
@@ -96,6 +99,15 @@
                   <label class="field-label">Representante Legal</label>
                   <input type="text" v-model="form.responsavel_nome" placeholder="Nome completo" />
                 </div>
+                <div style="grid-column:span 2">
+                  <label class="field-label">Endereço</label>
+                  <input type="text" v-model="form.configuracoes_extras.endereco" placeholder="Rua, Número, Bairro, Cidade - UF"/>
+                </div>
+                <div>
+                  <label class="field-label">CPF do Representante Legal</label>
+                  <input type="text" :value="form.configuracoes_extras.cpf_representante" placeholder="000.000.000-00" @input="handleCpfInput" />
+                  <p class="input-hint" style="color:#ef4444" v-if="errors.cpf_representante">{{ errors.cpf_representante }}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -126,6 +138,16 @@
           </div>
         </div>
 
+        <!-- Context badge -->
+        <div class="context-badge">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div class="cb-pill"><span class="cb-label">Processo</span><span class="cb-value">{{ form.pa_formalizacao || '—' }}</span></div>
+          <div class="cb-sep"></div>
+          <div class="cb-pill"><span class="cb-label">Entidade</span><span class="cb-value">{{ form.razao_social || '—' }}</span></div>
+          <div class="cb-sep"></div>
+          <div class="cb-pill"><span class="cb-label">CNPJ Raiz</span><span class="cb-value">{{ form.cnpj || '—' }}</span></div>
+        </div>
+
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
           <div style="width:44px;height:44px;border-radius:11px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -143,7 +165,7 @@
               <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:20px">
                 <div class="form-grid form-grid-3">
                   <div>
-                    <label class="field-label">Nº do Processo / PA</label>
+                    <label class="field-label">PA Emenda</label>
                     <input type="text" :value="form.pa_formalizacao" readonly style="background:#f1f5f9;color:#475569;" />
                   </div>
                   <div>
@@ -225,6 +247,16 @@
           <div class="step active"><div class="step-circle">3</div><span>Controle Financeiro</span></div>
         </div>
 
+        <!-- Context badge -->
+        <div class="context-badge">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div class="cb-pill"><span class="cb-label">Processo</span><span class="cb-value">{{ form.pa_formalizacao || '—' }}</span></div>
+          <div class="cb-sep"></div>
+          <div class="cb-pill"><span class="cb-label">Entidade</span><span class="cb-value">{{ form.razao_social || '—' }}</span></div>
+          <div class="cb-sep"></div>
+          <div class="cb-pill"><span class="cb-label">Unidade</span><span class="cb-value">{{ form.parceria.ajuste_termo || '—' }}</span></div>
+        </div>
+
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
           <div style="width:44px;height:44px;border-radius:11px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -241,22 +273,82 @@
             <div class="card-body">
               <div class="form-grid form-grid-3">
                 <div>
-                  <label class="field-label">Valor Total (R$)<span class="field-required">*</span></label>
-                  <input type="number" v-model="form.valor" placeholder="0.00" />
+                  <label class="field-label">Valor Total do Repasse (R$)<span class="field-required">*</span></label>
+                  <input type="text" :value="valorExibicao" @input="handleValorInput" placeholder="R$ 0,00" required />
                 </div>
                 <div>
-                  <label class="field-label">Periodicidade</label>
-                  <select v-model="form.configuracoes_extras.periodicidade_repasse">
-                    <option value="Mensal">Mensal</option>
-                    <option value="Bimestral">Bimestral</option>
-                    <option value="Semestral">Semestral</option>
-                    <option value="Anual">Anual</option>
+                  <label class="field-label">Número de Parcelas<span class="field-required">*</span></label>
+                  <select v-model="form.configuracoes_extras.numero_parcelas" required>
+                    <option value="">Selecione…</option>
+                    <option :value="1">1 parcela (único)</option>
+                    <option :value="2">2 parcelas</option>
+                    <option :value="3">3 parcelas</option>
+                    <option :value="4">4 parcelas</option>
+                    <option :value="6">6 parcelas</option>
+                    <option :value="12">12 parcelas</option>
                   </select>
                 </div>
                 <div>
-                  <label class="field-label">Dia de Repasse</label>
-                  <input type="number" v-model="form.configuracoes_extras.dia_repasse" placeholder="Ex: 10"/>
+                  <label class="field-label">Data do Primeiro Repasse</label>
+                  <input type="date" v-model="form.configuracoes_extras.data_primeiro_repasse"/>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cronograma de Parcelas -->
+          <div class="card" v-if="form.repasses && form.repasses.length > 0">
+            <div class="card-header">
+              <div>
+                <h3>Cronograma de Parcelas</h3>
+                <p>Defina o valor individual de cada parcela</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="parcela-input-header">
+                <span>#</span>
+                <span>Competência</span>
+                <span>Valor da Parcela (R$)</span>
+                <span>Data Prevista</span>
+                <span></span>
+              </div>
+              
+              <div id="parcelas-dinamicas">
+                <div v-for="(rep, index) in form.repasses" :key="index" class="parcela-input-row">
+                  <span style="font-weight:700;color:#1d4ed8;font-family:'DM Mono';font-size:12px">
+                    {{ String(index + 1).padStart(2,'0') }}/{{ String(form.repasses.length).padStart(2,'0') }}
+                  </span>
+                  <input type="text" placeholder="Ex Janeiro/2025" v-model="rep.mes_referencia" />
+                  <input type="text" placeholder="0,00" v-model="rep.repasse_parcela_texto" @input="updateRepasseParcela(rep)" style="font-family:'DM Mono',monospace" />
+                  <input type="date" v-model="rep.repasse_vencimento" />
+                  <span></span>
+                </div>
+              </div>
+              
+              <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <span style="font-size:13px;color:#64748b">Soma das parcelas: <strong style="color:#1e293b">R$ {{ formatCurrency(somaParcelas) }}</strong></span>
+                <span>
+                  <span v-if="somaCoincide" class="val-ok">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    Soma coincide com o valor total
+                  </span>
+                  <span v-else class="val-err">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Aviso: A soma das parcelas difere do total — diferença de R$ {{ formatCurrency(Math.abs(somaParcelas - (form.valor || 0))) }}
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload de Documentos -->
+          <div class="card">
+            <div class="card-header"><div><h3>Upload de Documentos</h3><p>Comprovantes e prestação de contas em PDF</p></div></div>
+            <div class="card-body">
+              <div class="drop-zone" id="drop-zone">
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <p>Arraste arquivos PDF aqui</p>
+                <span>ou clique para selecionar — máx. 20 MB</span>
               </div>
             </div>
           </div>
@@ -287,6 +379,26 @@ const props = defineProps<{
 }>()
 const emit = defineEmits(['update-screen'])
 
+// Definição das chaves esperadas para cada lançamento de repasse
+interface RepasseForm {
+  mes_referencia: string
+  repasse_oficio?: string
+  repasse_periodo?: string
+  repasse_parcela: number
+  repasse_parcela_texto?: string // Campo auxiliar para digitação amigável (BR)
+  repasse_retencao?: number
+  repasse_valor_final: number
+  repasse_vencimento: string
+  repasse_pa?: string
+  repasse_data_pagamento?: string
+  prestacao_oficio?: string
+  prestacao_data_entrega?: string
+  prestacao_pa?: string
+  prestacao_sugestao_glosa?: number
+  prestacao_reconsideracao?: number
+  prestacao_mts?: string
+}
+
 // Definição das chaves esperadas e da estrutura de dados da parceria
 interface ParceriaForm {
   ajuste_termo: string
@@ -316,7 +428,11 @@ interface EntityForm {
   vereador: string
   justificativa: string
   valor: number | null
+  cod_scim?: string
+  pa_empenho?: string
+  objeto_descricao?: string
   parceria: ParceriaForm
+  repasses: RepasseForm[]
   configuracoes_extras: {
     email_contato: string
     telefone: string
@@ -325,6 +441,10 @@ interface EntityForm {
     periodicidade_repasse: string
     dia_repasse: number | null
     status_prestacao: string
+    endereco?: string
+    cpf_representante?: string
+    numero_parcelas?: number | string
+    data_primeiro_repasse?: string
   }
 }
 
@@ -337,6 +457,20 @@ const poolEspecialidades = [
 
 // Passo atual do Stepper
 const currentStep = ref(1)
+
+// Helper para converter string de moeda BR (ex: "1.500,50" ou "1500,50") em float numérico
+function parseMoeda(str: string | number): number {
+  if (typeof str === 'number') return str
+  if (!str) return 0
+  const s = String(str).trim()
+  if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(s)) {
+    return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
+  }
+  if (/^\d+(,\d+)?$/.test(s)) {
+    return parseFloat(s.replace(',', '.')) || 0
+  }
+  return parseFloat(s.replace(/[^\d.]/g, '')) || 0
+}
 
 // Estado reativo do formulário contemplando todos os novos campos do termo de parceria e tabelas 1:1
 const form = reactive<EntityForm>({
@@ -353,6 +487,9 @@ const form = reactive<EntityForm>({
   vereador: '',
   justificativa: '',
   valor: null,
+  cod_scim: '',
+  pa_empenho: '',
+  objeto_descricao: '',
   parceria: {
     ajuste_termo: '',
     inicio_atividades: '',
@@ -371,6 +508,7 @@ const form = reactive<EntityForm>({
     responsavel_entidade: '',
     especialidades: {}
   },
+  repasses: [],
   configuracoes_extras: {
     email_contato: '',
     telefone: '',
@@ -378,9 +516,21 @@ const form = reactive<EntityForm>({
     historico_formalizacao: '',
     periodicidade_repasse: 'Mensal',
     dia_repasse: 10,
-    status_prestacao: 'Em análise'
+    status_prestacao: 'Em análise',
+    endereco: '',
+    cpf_representante: '',
+    numero_parcelas: 1,
+    data_primeiro_repasse: ''
   }
 })
+
+// Atualiza o valor numérico com base no texto digitado da parcela (moeda BR)
+const updateRepasseParcela = (rep: RepasseForm) => {
+  if (rep.repasse_parcela_texto !== undefined) {
+    rep.repasse_parcela = parseMoeda(rep.repasse_parcela_texto)
+    rep.repasse_valor_final = rep.repasse_parcela
+  }
+}
 
 // Estados auxiliares de interface e carregamento
 const isSubmitting = ref(false)
@@ -389,7 +539,8 @@ const apiSuccess = ref('')
 
 const errors = reactive({
   razao_social: '',
-  cnpj: ''
+  cnpj: '',
+  cpf_representante: ''
 })
 
 // Watchers para controle de passos
@@ -403,6 +554,89 @@ watch(currentStep, (newVal) => {
   if (newVal === 1) emit('update-screen', 'formalizacao');
   else if (newVal === 2) emit('update-screen', 'parceria');
   else if (newVal === 3) emit('update-screen', 'financeiro');
+})
+
+const gerarCronograma = () => {
+  const num = parseInt(form.configuracoes_extras.numero_parcelas as string) || 0
+  const dataInicioStr = form.configuracoes_extras.data_primeiro_repasse
+  if (num <= 0) {
+    form.repasses = []
+    return
+  }
+
+  const repassesNovos = [...form.repasses]
+  const valorSugerido = form.valor ? Number((form.valor / num).toFixed(2)) : 0
+  const valorSugeridoFmt = valorSugerido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  
+  if (repassesNovos.length > num) {
+    repassesNovos.splice(num)
+  } else {
+    const baseDate = dataInicioStr ? new Date(dataInicioStr + 'T12:00:00') : new Date()
+    
+    for (let i = repassesNovos.length; i < num; i++) {
+      const dataPrevista = new Date(baseDate)
+      dataPrevista.setMonth(baseDate.getMonth() + i)
+      
+      const ano = dataPrevista.getFullYear()
+      const mesesNomes = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+      ]
+      const competenciaSugerida = `${mesesNomes[dataPrevista.getMonth()]}/${ano}`
+      const dataPrevistaStr = dataPrevista.toISOString().split('T')[0]
+      
+      repassesNovos.push({
+        mes_referencia: competenciaSugerida,
+        repasse_parcela: valorSugerido,
+        repasse_parcela_texto: valorSugeridoFmt,
+        repasse_retencao: 0,
+        repasse_valor_final: valorSugerido,
+        repasse_vencimento: dataPrevistaStr,
+        repasse_oficio: '',
+        repasse_periodo: '',
+        repasse_pa: '',
+        repasse_data_pagamento: '',
+        prestacao_oficio: '',
+        prestacao_data_entrega: '',
+        prestacao_pa: '',
+        prestacao_sugestao_glosa: 0,
+        prestacao_reconsideracao: 0,
+        prestacao_mts: ''
+      })
+    }
+  }
+
+  // Atualiza todas as parcelas existentes com o valor sugerido se o valor total mudou
+  for (let i = 0; i < repassesNovos.length; i++) {
+    if (!repassesNovos[i].repasse_parcela_texto || repassesNovos[i].repasse_parcela === 0) {
+      repassesNovos[i].repasse_parcela = valorSugerido
+      repassesNovos[i].repasse_parcela_texto = valorSugeridoFmt
+      repassesNovos[i].repasse_valor_final = valorSugerido
+    }
+  }
+  
+  form.repasses = repassesNovos
+}
+
+// Watcher para gerar o cronograma automaticamente
+watch(
+  [
+    () => form.valor,
+    () => form.configuracoes_extras.numero_parcelas,
+    () => form.configuracoes_extras.data_primeiro_repasse
+  ],
+  () => {
+    gerarCronograma()
+  }
+)
+
+const somaParcelas = computed(() => {
+  return form.repasses.reduce((acc, r) => acc + (Number(r.repasse_parcela) || 0), 0)
+})
+
+const somaCoincide = computed(() => {
+  if (!form.valor) return somaParcelas.value === 0
+  return Math.abs(somaParcelas.value - form.valor) < 0.01
 })
 
 // Controle dinâmico das especialidades no JSONB
@@ -434,6 +668,14 @@ const nextStep = () => {
       const cnpjLimpo = form.cnpj.replace(/\D/g, '')
       if (cnpjLimpo.length !== 14) {
         errors.cnpj = 'O CNPJ deve conter exatamente 14 dígitos.'
+        hasErrors = true
+      }
+    }
+
+    if (form.configuracoes_extras.cpf_representante) {
+      const cpfLimpo = form.configuracoes_extras.cpf_representante.replace(/\D/g, '')
+      if (cpfLimpo.length !== 11) {
+        errors.cpf_representante = 'O CPF do representante deve conter exatamente 11 dígitos.'
         hasErrors = true
       }
     }
@@ -497,8 +739,58 @@ const handlePhoneInput = (event: Event) => {
   form.configuracoes_extras.telefone = value
 }
 
+// Máscara dinâmica para CPF
+const handleCpfInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  let value = input.value.replace(/\D/g, '')
+  
+  if (value.length > 11) {
+    value = value.slice(0, 11)
+  }
+
+  if (value.length > 9) {
+    value = value.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+  } else if (value.length > 6) {
+    value = value.replace(/^(\d{3})(\d{3})(\d{0,3})$/, '$1.$2.$3')
+  } else if (value.length > 3) {
+    value = value.replace(/^(\d{3})(\d{0,3})$/, '$1.$2')
+  }
+
+  form.configuracoes_extras.cpf_representante = value
+  errors.cpf_representante = ''
+}
+
+const valorExibicao = ref('')
+
+const handleValorInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  let value = input.value.replace(/\D/g, '')
+  if (!value) {
+    form.valor = null
+    valorExibicao.value = ''
+    return
+  }
+  const numValue = parseFloat(value) / 100
+  form.valor = numValue
+  valorExibicao.value = numValue.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  })
+}
+
+watch(() => form.valor, (newVal) => {
+  if (newVal === null || newVal === undefined) {
+    valorExibicao.value = ''
+  } else {
+    valorExibicao.value = newVal.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    })
+  }
+}, { immediate: true })
+
 // Limpeza de erros específicos
-const clearError = (field: 'razao_social' | 'cnpj') => {
+const clearError = (field: 'razao_social' | 'cnpj' | 'cpf_representante') => {
   errors[field] = ''
 }
 
@@ -643,9 +935,14 @@ const resetForm = () => {
   form.configuracoes_extras.periodicidade_repasse = 'Mensal'
   form.configuracoes_extras.dia_repasse = 10
   form.configuracoes_extras.status_prestacao = 'Em análise'
+  form.configuracoes_extras.endereco = ''
+  form.configuracoes_extras.cpf_representante = ''
+  form.configuracoes_extras.numero_parcelas = 1
+  form.configuracoes_extras.data_primeiro_repasse = ''
   
   errors.razao_social = ''
   errors.cnpj = ''
+  errors.cpf_representante = ''
   currentStep.value = 1
 }
 
@@ -686,7 +983,12 @@ const submitForm = async () => {
         responsavel_entidade: form.parceria.responsavel_entidade.trim() || null,
         especialidades: form.parceria.especialidades
       },
-      repasses: form.repasses,
+      repasses: form.repasses.map(r => ({
+        ...r,
+        repasse_vencimento: r.repasse_vencimento || null,
+        repasse_data_pagamento: r.repasse_data_pagamento || null,
+        prestacao_data_entrega: r.prestacao_data_entrega || null
+      })),
       
       configuracoes_extras: {
         email_contato: form.configuracoes_extras.email_contato.trim() || null,
@@ -695,7 +997,11 @@ const submitForm = async () => {
         historico_formalizacao: form.configuracoes_extras.historico_formalizacao.trim() || null,
         periodicidade_repasse: form.configuracoes_extras.periodicidade_repasse,
         dia_repasse: form.configuracoes_extras.dia_repasse,
-        status_prestacao: form.configuracoes_extras.status_prestacao
+        status_prestacao: form.configuracoes_extras.status_prestacao,
+        endereco: form.configuracoes_extras.endereco ? form.configuracoes_extras.endereco.trim() : null,
+        cpf_representante: form.configuracoes_extras.cpf_representante ? form.configuracoes_extras.cpf_representante.replace(/\D/g, '') : null,
+        numero_parcelas: form.configuracoes_extras.numero_parcelas,
+        data_primeiro_repasse: form.configuracoes_extras.data_primeiro_repasse || null
       }
     }
 
@@ -732,41 +1038,8 @@ const submitForm = async () => {
 }
 </script>
 <style scoped>
-/* Estilização Premium - Design Fluido & Glassmorphic */
-
 .entity-create-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   width: 100%;
-  padding: 1.5rem;
-  font-family: 'Inter', sans-serif;
-}
-
-.glass-card {
-  width: 100%;
-  max-width: 800px;
-  background: rgba(18, 18, 26, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  padding: 2.5rem;
-  color: #f3f4f6;
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.glass-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 4px;
-  background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
 }
 
 /* Header do Card */
@@ -775,215 +1048,8 @@ const submitForm = async () => {
   align-items: center;
   gap: 1.25rem;
   margin-bottom: 2rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid #f1f5f9;
   padding-bottom: 1.25rem;
-}
-
-.header-icon {
-  width: 3.2rem;
-  height: 3.2rem;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15));
-  border: 1px solid rgba(168, 85, 247, 0.3);
-  border-radius: 12px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: #a855f7;
-  flex-shrink: 0;
-}
-
-.header-icon svg {
-  width: 1.6rem;
-  height: 1.6rem;
-}
-
-.header-text h2 {
-  font-family: 'Outfit', sans-serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  background: linear-gradient(90deg, #f3f4f6, #e5e7eb);
-  -webkit-background-clip: text;
-  color: transparent;
-  margin: 0;
-}
-
-.header-text p {
-  font-size: 0.85rem;
-  color: #9ca3af;
-  margin: 0.2rem 0 0 0;
-}
-
-/* Stepper (Indicador de Passos) */
-.stepper-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2.5rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  padding: 1rem 1.5rem;
-  border-radius: 14px;
-}
-
-.stepper-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  z-index: 2;
-  transition: all 0.3s ease;
-}
-
-.step-counter {
-  width: 2.2rem;
-  height: 2.2rem;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-family: 'Outfit', sans-serif;
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: #9ca3af;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.step-name {
-  font-family: 'Outfit', sans-serif;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #9ca3af;
-  transition: all 0.3s ease;
-}
-
-/* Stepper Actives e Completeds */
-.stepper-item.active .step-counter {
-  background: linear-gradient(135deg, #6366f1, #a855f7);
-  border-color: transparent;
-  color: #ffffff;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
-}
-
-.stepper-item.active .step-name {
-  color: #c084fc;
-}
-
-.stepper-item.completed .step-counter {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: #10b981;
-  color: #10b981;
-}
-
-.stepper-item.completed .step-name {
-  color: #10b981;
-}
-
-.step-connector {
-  flex-grow: 1;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 0 1rem;
-  transition: all 0.4s ease;
-  position: relative;
-}
-
-.step-connector.completed {
-  background: linear-gradient(90deg, #10b981, #10b981);
-}
-
-@media (max-width: 640px) {
-  .step-name {
-    display: none;
-  }
-}
-
-/* Alertas de Feedback */
-.alert-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.alert-success {
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  color: #a7f3d0;
-}
-
-.alert-error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
-}
-
-.alert-icon svg {
-  width: 1.5rem;
-  height: 1.5rem;
-  flex-shrink: 0;
-}
-
-.alert-content {
-  flex-grow: 1;
-}
-
-.alert-content strong {
-  display: block;
-  font-size: 0.9rem;
-  font-weight: 700;
-  margin-bottom: 0.2rem;
-}
-
-.alert-content p {
-  font-size: 0.85rem;
-  margin: 0;
-  opacity: 0.9;
-}
-
-.alert-close {
-  background: transparent;
-  border: none;
-  color: currentColor;
-  font-size: 1.25rem;
-  cursor: pointer;
-  opacity: 0.6;
-  padding: 0;
-  line-height: 1;
-  transition: opacity 0.2s;
-}
-
-.alert-close:hover {
-  opacity: 1;
-}
-
-/* Seções e Estrutura */
-.create-form {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-}
-
-.form-section-step {
-  animation: slideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.section-title {
-  font-family: 'Outfit', sans-serif;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #c084fc;
-  margin: 0 0 1.5rem 0;
-  letter-spacing: -0.01em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  padding-bottom: 0.5rem;
 }
 
 /* Layout em Grid */
@@ -1315,68 +1381,7 @@ const submitForm = async () => {
   margin-left: auto;
 }
 
-.btn-primary, .btn-secondary {
-  font-family: 'Outfit', sans-serif;
-  font-size: 0.925rem;
-  font-weight: 600;
-  padding: 0.75rem 1.75rem;
-  border-radius: 10px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #6366f1, #a855f7);
-  border: none;
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(168, 85, 247, 0.3);
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(168, 85, 247, 0.45);
-  background: linear-gradient(135deg, #4f46e5, #9333ea);
-}
-
-.btn-save {
-  background: linear-gradient(135deg, #10b981, #059669);
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
-}
-
-.btn-save:hover:not(:disabled) {
-  background: linear-gradient(135deg, #059669, #047857);
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #d1d5db;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #ffffff;
-}
-
-.btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* Fim dos botões */
 
 /* Spinner no botão */
 .spinner-btn {

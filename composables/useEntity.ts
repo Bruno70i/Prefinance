@@ -22,13 +22,10 @@ export const useEntity = () => {
     isLoading.value = true
     errorMsg.value = null
     try {
-      // Faz o fetch assíncrono utilizando o padrão do Nuxt 3
-      const { data, error } = await useFetch<Entity[]>('/api/entidades')
-      if (error.value) {
-        throw new Error(error.value.message || 'Erro ao carregar entidades')
-      }
-      if (data.value) {
-        entitiesList.value = data.value
+      // Faz o fetch assíncrono utilizando o padrão do Nuxt 3 com $fetch para chamadas sob demanda
+      const response = await $fetch<Entity[]>('/api/entidades')
+      if (response) {
+        entitiesList.value = response
       }
     } catch (err: any) {
       errorMsg.value = err.message || 'Erro desconhecido'

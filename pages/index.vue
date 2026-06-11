@@ -65,13 +65,24 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal de Edição -->
+    <div v-if="isEditModalOpen" class="modal-overlay" @click.self="closeEditModal">
+      <div class="modal-container">
+        <EntityForm />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import EntityForm from '~/components/EntityForm.vue'
+import { useEntity } from '~/composables/useEntity'
 
 const activeScreen = ref('dashboard')
+const isEditModalOpen = ref(false)
+const { selectedEntity, selectEntity, entitiesList } = useEntity()
 
 const topbarTitle = computed(() => {
   if (activeScreen.value === 'dashboard') return 'Dashboard de Consulta'
@@ -98,8 +109,24 @@ function novaParceria() {
 }
 
 function openEntity(id: string) {
-  // AINDA NÃO IMPLEMENTADO NO NOVO LAYOUT, MAS PODE ABRIR O FORMULÁRIO DE EDIÇÃO OU VISUALIZAÇÃO
+  const entity = entitiesList.value.find(e => e.id === id)
+  if (entity) {
+    selectEntity(entity)
+    isEditModalOpen.value = true
+  }
 }
+
+function closeEditModal() {
+  selectEntity(null)
+  isEditModalOpen.value = false
+}
+
+import { watch } from 'vue'
+watch(selectedEntity, (newVal) => {
+  if (!newVal) {
+    isEditModalOpen.value = false
+  }
+})
 
 function exportCSV() {
   alert('Exportar CSV em desenvolvimento')
@@ -112,6 +139,31 @@ useHead({
   ]
 })
 </script>
+
+<style scoped>
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-container {
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: transparent;
+}
+</style>
 
 <style>
 /* Removeremos a folha de estilo local já que incluímos globalmente o main.css */

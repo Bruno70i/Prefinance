@@ -6,9 +6,6 @@ declare module "nitropack/types" {
     '/api/entidades/:id': {
       'put': Simplify<Serialize<Awaited<ReturnType<typeof import('../../server/api/entidades/[id].put').default>>>>
     }
-    '/api/entidades': {
-      'get': Simplify<Serialize<Awaited<ReturnType<typeof import('../../server/api/entidades/index.get').default>>>>
-    }
     '/__nuxt_error': {
       'default': Simplify<Serialize<Awaited<ReturnType<typeof import('../../node_modules/@nuxt/nitro-server/dist/runtime/handlers/renderer').default>>>>
     }

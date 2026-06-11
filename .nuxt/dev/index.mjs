@@ -2699,13 +2699,11 @@ async function getIslandContext(event) {
 }
 
 const _lazy_97uaoa = () => Promise.resolve().then(function () { return _id__put$1; });
-const _lazy_YkzWCm = () => Promise.resolve().then(function () { return index_get$1; });
 const _lazy_XQTNyI = () => Promise.resolve().then(function () { return renderer; });
 
 const handlers = [
   { route: '', handler: _iUWIgP, lazy: false, middleware: true, method: undefined },
   { route: '/api/entidades/:id', handler: _lazy_97uaoa, lazy: true, middleware: false, method: "put" },
-  { route: '/api/entidades', handler: _lazy_YkzWCm, lazy: true, middleware: false, method: "get" },
   { route: '/__nuxt_error', handler: _lazy_XQTNyI, lazy: true, middleware: false, method: undefined },
   { route: '/__nuxt_island/**', handler: handler$1, lazy: false, middleware: false, method: undefined },
   { route: '/**', handler: _lazy_XQTNyI, lazy: true, middleware: false, method: undefined }
@@ -3140,51 +3138,6 @@ const _id__put = defineEventHandler(async (event) => {
 const _id__put$1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: _id__put
-}, Symbol.toStringTag, { value: 'Module' }));
-
-const index_get = defineEventHandler(async (event) => {
-  const dbUrl = process.env.DATABASE_URL;
-  if (dbUrl) {
-    try {
-      const pool = new pg.Pool({
-        connectionString: dbUrl,
-        connectionTimeoutMillis: 1500
-      });
-      const client = await pool.connect();
-      try {
-        const res = await client.query("SELECT id, razao_social, cnpj, responsavel_nome, configuracoes_extras FROM entidades ORDER BY razao_social ASC");
-        return res.rows;
-      } finally {
-        client.release();
-        await pool.end();
-      }
-    } catch (dbErr) {
-      console.warn("PostgreSQL offline ou inacess\xEDvel. Usando fallback de arquivo local imediatamente.");
-    }
-  }
-  try {
-    const filePath = path.resolve(process.cwd(), "entidades_mapeadas.json");
-    if (fs.existsSync(filePath)) {
-      const fileData = fs.readFileSync(filePath, "utf-8");
-      const parsed = JSON.parse(fileData);
-      return parsed.map((ent, idx) => ({
-        id: ent.id || `temp-id-${idx + 1}`,
-        razao_social: ent.razao_social,
-        cnpj: ent.cnpj,
-        responsavel_nome: ent.responsavel_nome,
-        configuracoes_extras: ent.configuracoes_extras
-      }));
-    }
-    return [];
-  } catch (err) {
-    console.error("Erro ao ler dados locais:", err);
-    return [];
-  }
-});
-
-const index_get$1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
-  __proto__: null,
-  default: index_get
 }, Symbol.toStringTag, { value: 'Module' }));
 
 function renderPayloadResponse(ssrContext) {

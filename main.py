@@ -64,7 +64,7 @@ class ParceriaCreate(BaseModel):
 
 # Schema de Repasse Mensal (Tabela 1:N repasses_mensais)
 class RepasseCreate(BaseModel):
-    mes_referencia: str = Field(..., min_length=7, max_length=7, pattern=r"^\d{2}\.\d{4}$", description="Formato MM.AAAA (Ex: 01.2026)")
+    mes_referencia: str = Field(..., description="Mês de referência do repasse (Ex: Janeiro/2025)")
     repasse_oficio: Optional[str] = Field(None, description="Número do Ofício de repasse")
     repasse_periodo: Optional[str] = Field(None, description="Período do repasse (Ex: Janeiro)")
     repasse_parcela: Optional[float] = Field(0.0, description="Valor bruto da parcela de repasse")
@@ -174,6 +174,40 @@ def safe_str_decode(err: Exception) -> str:
 @app.get("/")
 def read_root():
     return {"status": "online", "message": "PreFinance API Backend está ativo."}
+
+@app.get("/api/entidades")
+def get_entidades():
+    """
+    Lista todas as entidades cadastradas.
+    """
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    
+    try:
+        with engine.begin() as conn:
+            query = text("""
+                SELECT id, razao_social, cnpj, responsavel_nome, situacao, numero_emenda, valor, configuracoes_extras 
+                FROM entidades 
+                ORDER BY razao_social ASC
+            """)
+            res = conn.execute(query).fetchall()
+            
+            entidades = []
+            for row in res:
+                entidades.append({
+                    "id": row.id,
+                    "razao_social": row.razao_social,
+                    "cnpj": row.cnpj,
+                    "responsavel_nome": row.responsavel_nome,
+                    "situacao": row.situacao,
+                    "numero_emenda": row.numero_emenda,
+                    "valor": row.valor,
+                    "configuracoes_extras": row.configuracoes_extras
+                })
+            return entidades
+    except Exception as e:
+        error_msg = safe_str_decode(e)
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar entidades: {error_msg}")
 
 @app.post("/api/entidades", status_code=status.HTTP_201_CREATED)
 def create_entidade(entidade: EntidadeCreate):
