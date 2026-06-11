@@ -43,8 +43,8 @@
           <div class="breadcrumb" id="topbar-breadcrumb">PreFinance › {{ topbarBreadcrumb }}</div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn btn-ghost btn-sm" @click="exportCSV()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar CSV
+          <button class="btn btn-ghost btn-sm" @click="exportGeral()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar Geral (Excel)
           </button>
           <button class="btn btn-primary btn-sm" @click="novaParceria()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nova Parceria
@@ -128,8 +128,13 @@ watch(selectedEntity, (newVal) => {
   }
 })
 
-function exportCSV() {
-  alert('Exportar CSV em desenvolvimento')
+function exportGeral() {
+  const link = document.createElement('a')
+  link.href = '/api/export/geral'
+  link.download = 'Prefinance_Exportacao_Geral.xlsx'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 useHead({

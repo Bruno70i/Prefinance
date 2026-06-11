@@ -6,6 +6,12 @@ import json
 from datetime import date
 from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import StreamingResponse
+import io
+import pandas as pd
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 from dotenv import load_dotenv
@@ -848,6 +854,503 @@ def delete_entidade(entidade_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao excluir entidade: {error_msg}"
         )
+
+def apply_excel_styles(worksheet):
+    # Cabeçalhos: Fundo azul (#003366), Texto Branco, Negrito, Centralizado.
+    header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    center_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    # Bordas
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    if worksheet.max_row < 1:
+        return
+        
+    # Estilizar cabeçalhos
+    for col in range(1, worksheet.max_column + 1):
+        cell = worksheet.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_alignment
+        cell.border = thin_border
+        
+    # Estilizar dados e ajustar largura
+    for col in range(1, worksheet.max_column + 1):
+        max_length = 0
+        column_letter = get_column_letter(col)
+        
+        # Nome da coluna para identificar se é moeda
+        header_value = str(worksheet.cell(row=1, column=col).value or "")
+        is_currency = "(R$)" in header_value
+        
+        for row in range(1, worksheet.max_row + 1):
+            cell = worksheet.cell(row=row, column=col)
+            
+            # Aplicar borda nas células com dados
+            if row > 1:
+                cell.border = thin_border
+                
+            # Formatar Moeda
+            if row > 1 and is_currency:
+                try:
+                    if cell.value is not None and str(cell.value).strip() != "":
+                        cell.value = float(cell.value)
+                        cell.number_format = 'R$ #,##0.00'
+                except ValueError:
+                    pass
+
+            try:
+                if cell.value:
+                    # Avaliar tamanho para largura, considerando formatação de moeda
+                    val_str = f"R$ {cell.value:,.2f}" if (row > 1 and is_currency and isinstance(cell.value, (int, float))) else str(cell.value)
+                    max_length = max(max_length, len(val_str))
+            except:
+                pass
+        
+        # Ajustar largura (+2 para margem)
+        worksheet.column_dimensions[column_letter].width = min(max_length + 2, 50)
+
+@app.get("/api/export/geral")
+def export_geral():
+    """
+    Exporta todas as entidades cadastradas e seus repasses para um arquivo Excel com múltiplas abas.
+    """
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    
+    try:
+        with engine.connect() as conn:
+            # Busca todas as entidades e parcerias
+            query = text("""
+                SELECT e.*, 
+                       p.ajuste_termo, p.inicio_atividades, p.termino_atividades, p.gestor_parceria,
+                       p.projeto, p.categorias, p.atendimento_descricao, p.meta_mes_atendimentos,
+                       p.responsavel_entidade, p.especialidades
+                FROM entidades e
+                LEFT JOIN dados_parceria p ON e.id = p.entidade_id
+                ORDER BY e.razao_social ASC;
+            """)
+            result = conn.execute(query)
+            
+            formalizacoes = []
+            parcerias = []
+            financeiro_list = []
+            
+            for row in result:
+                row_map = row._mapping
+                entidade_id = row_map["id"]
+                razao_social = row_map["razao_social"]
+                cnpj = row_map["cnpj"]
+                
+                # 1. Dados de Formalização
+                formalizacoes.append({
+                    "Razão Social": razao_social,
+                    "CNPJ": cnpj,
+                    "PA Emenda": row_map["pa_emenda"] or "",
+                    "PA Formalização": row_map["pa_formalizacao"] or "",
+                    "Tipo de Instrumento": row_map["situacao"] or "",
+                    "Número da Emenda": row_map["numero_emenda"] or "",
+                    "Vereador Proponente": row_map["vereador"] or "",
+                    "Valor Destinado (R$)": float(row_map["valor"]) if row_map["valor"] is not None else 0.0,
+                    "Responsável Legal": row_map["responsavel_nome"] or "",
+                    "Justificativa": row_map["justificativa"] or "",
+                    "Histórico": row_map["historico"] or ""
+                })
+                
+                # 2. Dados da Parceria
+                if row_map["ajuste_termo"] or row_map["projeto"]:
+                    parcerias.append({
+                        "Razão Social": razao_social,
+                        "CNPJ": cnpj,
+                        "Ajuste / Termo": row_map["ajuste_termo"] or "",
+                        "Gestor da Parceria": row_map["gestor_parceria"] or "",
+                        "Projeto / Objeto": row_map["projeto"] or "",
+                        "Início da Vigência": row_map["inicio_atividades"].strftime('%d/%m/%Y') if row_map["inicio_atividades"] else "",
+                        "Término da Vigência": row_map["termino_atividades"].strftime('%d/%m/%Y') if row_map["termino_atividades"] else "",
+                        "Meta Mensal Atendimentos": row_map["meta_mes_atendimentos"] or 0,
+                        "Responsável Entidade": row_map["responsavel_entidade"] or ""
+                    })
+                
+                # 3. Lançamentos Financeiros (Repasses e Prestações de Contas)
+                repasses_query = text("""
+                    SELECT * FROM repasses_mensais 
+                    WHERE entidade_id = :entidade_id 
+                    ORDER BY mes_referencia ASC
+                """)
+                repasses_res = conn.execute(repasses_query, {"entidade_id": entidade_id})
+                
+                for rep in repasses_res:
+                    r = rep._mapping
+                    financeiro_list.append({
+                        "Razão Social": razao_social,
+                        "CNPJ": cnpj,
+                        "PA Empenho": row_map["pa_empenho"] or "",
+                        "Código SCIM": row_map["cod_scim"] or "",
+                        "Descrição do Objeto": row_map["objeto_descricao"] or "",
+                        "Mês Referência": r["mes_referencia"] or "",
+                        "Valor Parcela (R$)": float(r["repasse_parcela"]) if r["repasse_parcela"] is not None else 0.0,
+                        "Retenções (R$)": float(r["repasse_retencao"]) if r["repasse_retencao"] is not None else 0.0,
+                        "Valor Líquido (R$)": float(r["repasse_valor_final"]) if r["repasse_valor_final"] is not None else 0.0,
+                        "Data Vencimento": r["repasse_vencimento"].strftime('%d/%m/%Y') if r["repasse_vencimento"] else "",
+                        "PA Repasse": r["repasse_pa"] or "",
+                        "Data Pagamento": r["repasse_data_pagamento"].strftime('%d/%m/%Y') if r["repasse_data_pagamento"] else "",
+                        "Ofício Prestação": r["prestacao_oficio"] or "",
+                        "Data Entrega Prestação": r["prestacao_data_entrega"].strftime('%d/%m/%Y') if r["prestacao_data_entrega"] else "",
+                        "PA Prestação": r["prestacao_pa"] or "",
+                        "Sugestão Glosa (R$)": float(r["prestacao_sugestao_glosa"]) if r["prestacao_sugestao_glosa"] is not None else 0.0,
+                        "Reconsideração Glosa (R$)": float(r["prestacao_reconsideracao"]) if r["prestacao_reconsideracao"] is not None else 0.0,
+                        "Manifestação MTS": r["prestacao_mts"] or ""
+                    })
+
+            # Cria os DataFrames
+            df_formalizacoes = pd.DataFrame(formalizacoes)
+            df_parcerias = pd.DataFrame(parcerias)
+            df_financeiro = pd.DataFrame(financeiro_list)
+
+            # Grava no buffer BytesIO
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                if not df_formalizacoes.empty:
+                    df_formalizacoes.to_excel(writer, sheet_name="Formalização", index=False)
+                else:
+                    pd.DataFrame(columns=["Sem dados"]).to_excel(writer, sheet_name="Formalização", index=False)
+                
+                if not df_parcerias.empty:
+                    df_parcerias.to_excel(writer, sheet_name="Dados da Parceria", index=False)
+                else:
+                    pd.DataFrame(columns=["Sem dados"]).to_excel(writer, sheet_name="Dados da Parceria", index=False)
+                
+                if not df_financeiro.empty:
+                    df_financeiro.to_excel(writer, sheet_name="Controle Financeiro", index=False)
+                else:
+                    pd.DataFrame(columns=["Sem dados"]).to_excel(writer, sheet_name="Controle Financeiro", index=False)
+
+                for sheet in writer.sheets.values():
+                    apply_excel_styles(sheet)
+
+            output.seek(0)
+            
+            headers = {
+                'Content-Disposition': 'attachment; filename="Prefinance_Exportacao_Geral.xlsx"'
+            }
+            return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+            
+    except Exception as e:
+        error_msg = safe_str_decode(e)
+        raise HTTPException(status_code=500, detail=f"Erro ao exportar dados consolidados: {error_msg}")
+
+@app.get("/api/export/entidade/{entidade_id}")
+def export_entidade(entidade_id: str, etapa: str = "todos"):
+    """
+    Exporta dados de uma entidade específica filtrado pela etapa.
+    """
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    
+    try:
+        try:
+            uuid.UUID(entidade_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID de entidade inválido (deve ser UUID).")
+
+        with engine.connect() as conn:
+            query = text("""
+                SELECT e.*, 
+                       p.ajuste_termo, p.inicio_atividades, p.termino_atividades, p.gestor_parceria,
+                       p.projeto, p.categorias, p.atendimento_descricao, p.meta_mes_atendimentos,
+                       p.responsavel_entidade, p.especialidades
+                FROM entidades e
+                LEFT JOIN dados_parceria p ON e.id = p.entidade_id
+                WHERE e.id = :id;
+            """)
+            row = conn.execute(query, {"id": entidade_id}).fetchone()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail="Entidade não encontrada.")
+                
+            row_map = row._mapping
+            razao_social = row_map["razao_social"]
+            cnpj = row_map["cnpj"]
+            
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                
+                # 1. Formalização
+                if etapa in ("todos", "formalizacao"):
+                    data_formalizacao = [{
+                        "Razão Social": razao_social,
+                        "CNPJ": cnpj,
+                        "PA Emenda": row_map["pa_emenda"] or "",
+                        "PA Formalização": row_map["pa_formalizacao"] or "",
+                        "Tipo de Instrumento": row_map["situacao"] or "",
+                        "Número da Emenda": row_map["numero_emenda"] or "",
+                        "Vereador Proponente": row_map["vereador"] or "",
+                        "Valor Destinado (R$)": float(row_map["valor"]) if row_map["valor"] is not None else 0.0,
+                        "Responsável Legal": row_map["responsavel_nome"] or "",
+                        "Justificativa": row_map["justificativa"] or "",
+                        "Histórico": row_map["historico"] or ""
+                    }]
+                    pd.DataFrame(data_formalizacao).to_excel(writer, sheet_name="Formalização", index=False)
+                
+                # 2. Dados da Parceria
+                if etapa in ("todos", "parceria"):
+                    data_parceria = [{
+                        "Razão Social": razao_social,
+                        "CNPJ": cnpj,
+                        "Ajuste / Termo": row_map["ajuste_termo"] or "",
+                        "Gestor da Parceria": row_map["gestor_parceria"] or "",
+                        "Projeto / Objeto": row_map["projeto"] or "",
+                        "Início da Vigência": row_map["inicio_atividades"].strftime('%d/%m/%Y') if row_map["inicio_atividades"] else "",
+                        "Término da Vigência": row_map["termino_atividades"].strftime('%d/%m/%Y') if row_map["termino_atividades"] else "",
+                        "Meta Mensal Atendimentos": row_map["meta_mes_atendimentos"] or 0,
+                        "Responsável Entidade": row_map["responsavel_entidade"] or ""
+                    }]
+                    pd.DataFrame(data_parceria).to_excel(writer, sheet_name="Dados da Parceria", index=False)
+                
+                # 3. Controle Financeiro / Repasses
+                if etapa in ("todos", "financeiro"):
+                    repasses_query = text("""
+                        SELECT * FROM repasses_mensais 
+                        WHERE entidade_id = :entidade_id 
+                        ORDER BY mes_referencia ASC
+                    """)
+                    repasses_res = conn.execute(repasses_query, {"entidade_id": entidade_id})
+                    
+                    financeiro_list = []
+                    for rep in repasses_res:
+                        r = rep._mapping
+                        financeiro_list.append({
+                            "Razão Social": razao_social,
+                            "CNPJ": cnpj,
+                            "PA Empenho": row_map["pa_empenho"] or "",
+                            "Código SCIM": row_map["cod_scim"] or "",
+                            "Descrição do Objeto": row_map["objeto_descricao"] or "",
+                            "Mês Referência": r["mes_referencia"] or "",
+                            "Valor Parcela (R$)": float(r["repasse_parcela"]) if r["repasse_parcela"] is not None else 0.0,
+                            "Retenções (R$)": float(r["repasse_retencao"]) if r["repasse_retencao"] is not None else 0.0,
+                            "Valor Líquido (R$)": float(r["repasse_valor_final"]) if r["repasse_valor_final"] is not None else 0.0,
+                            "Data Vencimento": r["repasse_vencimento"].strftime('%d/%m/%Y') if r["repasse_vencimento"] else "",
+                            "PA Repasse": r["repasse_pa"] or "",
+                            "Data Pagamento": r["repasse_data_pagamento"].strftime('%d/%m/%Y') if r["repasse_data_pagamento"] else "",
+                            "Ofício Prestação": r["prestacao_oficio"] or "",
+                            "Data Entrega Prestação": r["prestacao_data_entrega"].strftime('%d/%m/%Y') if r["prestacao_data_entrega"] else "",
+                            "PA Prestação": r["prestacao_pa"] or "",
+                            "Sugestão Glosa (R$)": float(r["prestacao_sugestao_glosa"]) if r["prestacao_sugestao_glosa"] is not None else 0.0,
+                            "Reconsideração Glosa (R$)": float(r["prestacao_reconsideracao"]) if r["prestacao_reconsideracao"] is not None else 0.0,
+                            "Manifestação MTS": r["prestacao_mts"] or ""
+                        })
+                    if not financeiro_list:
+                        # Se não há repasses ainda, adiciona linha básica vazia apenas com cabeçalho da entidade
+                        financeiro_list.append({
+                            "Razão Social": razao_social,
+                            "CNPJ": cnpj,
+                            "PA Empenho": row_map["pa_empenho"] or "",
+                            "Código SCIM": row_map["cod_scim"] or "",
+                            "Descrição do Objeto": row_map["objeto_descricao"] or "",
+                            "Mês Referência": "",
+                            "Valor Parcela (R$)": 0.0,
+                            "Retenções (R$)": 0.0,
+                            "Valor Líquido (R$)": 0.0,
+                            "Data Vencimento": "",
+                            "PA Repasse": "",
+                            "Data Pagamento": "",
+                            "Ofício Prestação": "",
+                            "Data Entrega Prestação": "",
+                            "PA Prestação": "",
+                            "Sugestão Glosa (R$)": 0.0,
+                            "Reconsideração Glosa (R$)": 0.0,
+                            "Manifestação MTS": ""
+                        })
+                    pd.DataFrame(financeiro_list).to_excel(writer, sheet_name="Controle Financeiro", index=False)
+
+                for sheet in writer.sheets.values():
+                    apply_excel_styles(sheet)
+
+            output.seek(0)
+            
+            nome_arq = f"Prefinance_Exportacao_{razao_social.replace(' ', '_')}_{etapa}.xlsx"
+            headers = {
+                'Content-Disposition': f'attachment; filename="{nome_arq}"'
+            }
+            return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+            
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        error_msg = safe_str_decode(e)
+        raise HTTPException(status_code=500, detail=f"Erro ao exportar dados da entidade: {error_msg}")
+
+@app.post("/api/export/dados")
+def export_dados(dados: dict, etapa: str = "todos"):
+    """
+    Exporta os dados enviados diretamente no corpo da requisição para um arquivo Excel (rascunho).
+    """
+    def format_date_str(date_str):
+        if not date_str or not isinstance(date_str, str):
+            return ""
+        parts = date_str.split('-')
+        if len(parts) == 3 and len(parts[0]) == 4:
+            return f"{parts[2]}/{parts[1]}/{parts[0]}"
+        return date_str
+
+    try:
+        razao_social = dados.get("razao_social") or "Nova Parceria"
+        cnpj = dados.get("cnpj") or ""
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            
+            # 1. Formalização
+            if etapa in ("todos", "formalizacao"):
+                val_destinado = dados.get("valor")
+                try:
+                    val_destinado = float(val_destinado) if val_destinado is not None and str(val_destinado).strip() != "" else 0.0
+                except (ValueError, TypeError):
+                    val_destinado = 0.0
+                    
+                data_formalizacao = [{
+                    "Razão Social": razao_social,
+                    "CNPJ": cnpj,
+                    "PA Emenda": dados.get("pa_emenda") or "",
+                    "PA Formalização": dados.get("pa_formalizacao") or "",
+                    "Tipo de Instrumento": dados.get("situacao") or "",
+                    "Número da Emenda": dados.get("numero_emenda") or "",
+                    "Vereador Proponente": dados.get("vereador") or "",
+                    "Valor Destinado (R$)": val_destinado,
+                    "Responsável Legal": dados.get("responsavel_nome") or "",
+                    "Justificativa": dados.get("justificativa") or "",
+                    "Histórico": dados.get("historico") or ""
+                }]
+                pd.DataFrame(data_formalizacao).to_excel(writer, sheet_name="Formalização", index=False)
+            
+            # 2. Dados da Parceria
+            if etapa in ("todos", "parceria"):
+                ajuste_termo = ""
+                gestor_parceria = ""
+                projeto = ""
+                inicio_atividades = ""
+                termino_atividades = ""
+                meta_mes_atendimentos = 0
+                responsavel_entidade = ""
+                
+                parceria = dados.get("parceria")
+                if isinstance(parceria, dict):
+                    ajuste_termo = parceria.get("ajuste_termo") or ""
+                    gestor_parceria = parceria.get("gestor_parceria") or ""
+                    projeto = parceria.get("projeto") or ""
+                    inicio_atividades = format_date_str(parceria.get("inicio_atividades"))
+                    termino_atividades = format_date_str(parceria.get("termino_atividades"))
+                    try:
+                        meta_mes_atendimentos = int(parceria.get("meta_mes_atendimentos")) if parceria.get("meta_mes_atendimentos") is not None else 0
+                    except (ValueError, TypeError):
+                        meta_mes_atendimentos = 0
+                    responsavel_entidade = parceria.get("responsavel_entidade") or ""
+                
+                data_parceria = [{
+                    "Razão Social": razao_social,
+                    "CNPJ": cnpj,
+                    "Ajuste / Termo": ajuste_termo,
+                    "Gestor da Parceria": gestor_parceria,
+                    "Projeto / Objeto": projeto,
+                    "Início da Vigência": inicio_atividades,
+                    "Término da Vigência": termino_atividades,
+                    "Meta Mensal Atendimentos": meta_mes_atendimentos,
+                    "Responsável Entidade": responsavel_entidade
+                }]
+                pd.DataFrame(data_parceria).to_excel(writer, sheet_name="Dados da Parceria", index=False)
+            
+            # 3. Controle Financeiro / Repasses
+            if etapa in ("todos", "financeiro"):
+                financeiro_list = []
+                repasses = dados.get("repasses")
+                if isinstance(repasses, list):
+                    for rep in repasses:
+                        if isinstance(rep, dict):
+                            try:
+                                v_parc = float(rep.get("repasse_parcela")) if rep.get("repasse_parcela") is not None and str(rep.get("repasse_parcela")).strip() != "" else 0.0
+                            except (ValueError, TypeError):
+                                v_parc = 0.0
+                            try:
+                                v_ret = float(rep.get("repasse_retencao")) if rep.get("repasse_retencao") is not None and str(rep.get("repasse_retencao")).strip() != "" else 0.0
+                            except (ValueError, TypeError):
+                                v_ret = 0.0
+                            try:
+                                v_liq = float(rep.get("repasse_valor_final")) if rep.get("repasse_valor_final") is not None and str(rep.get("repasse_valor_final")).strip() != "" else 0.0
+                            except (ValueError, TypeError):
+                                v_liq = 0.0
+                            try:
+                                v_glosa = float(rep.get("prestacao_sugestao_glosa")) if rep.get("prestacao_sugestao_glosa") is not None and str(rep.get("prestacao_sugestao_glosa")).strip() != "" else 0.0
+                            except (ValueError, TypeError):
+                                v_glosa = 0.0
+                            try:
+                                v_recons = float(rep.get("prestacao_reconsideracao")) if rep.get("prestacao_reconsideracao") is not None and str(rep.get("prestacao_reconsideracao")).strip() != "" else 0.0
+                            except (ValueError, TypeError):
+                                v_recons = 0.0
+                                
+                            financeiro_list.append({
+                                "Razão Social": razao_social,
+                                "CNPJ": cnpj,
+                                "PA Empenho": dados.get("pa_empenho") or "",
+                                "Código SCIM": dados.get("cod_scim") or "",
+                                "Descrição do Objeto": dados.get("objeto_descricao") or "",
+                                "Mês Referência": rep.get("mes_referencia") or "",
+                                "Valor Parcela (R$)": v_parc,
+                                "Retenções (R$)": v_ret,
+                                "Valor Líquido (R$)": v_liq,
+                                "Data Vencimento": format_date_str(rep.get("repasse_vencimento")),
+                                "PA Repasse": rep.get("repasse_pa") or "",
+                                "Data Pagamento": format_date_str(rep.get("repasse_data_pagamento")),
+                                "Ofício Prestação": rep.get("prestacao_oficio") or "",
+                                "Data Entrega Prestação": format_date_str(rep.get("prestacao_data_entrega")),
+                                "PA Prestação": rep.get("prestacao_pa") or "",
+                                "Sugestão Glosa (R$)": v_glosa,
+                                "Reconsideração Glosa (R$)": v_recons,
+                                "Manifestação MTS": rep.get("prestacao_mts") or ""
+                            })
+                
+                if not financeiro_list:
+                    financeiro_list.append({
+                        "Razão Social": razao_social,
+                        "CNPJ": cnpj,
+                        "PA Empenho": dados.get("pa_empenho") or "",
+                        "Código SCIM": dados.get("cod_scim") or "",
+                        "Descrição do Objeto": dados.get("objeto_descricao") or "",
+                        "Mês Referência": "",
+                        "Valor Parcela (R$)": 0.0,
+                        "Retenções (R$)": 0.0,
+                        "Valor Líquido (R$)": 0.0,
+                        "Data Vencimento": "",
+                        "PA Repasse": "",
+                        "Data Pagamento": "",
+                        "Ofício Prestação": "",
+                        "Data Entrega Prestação": "",
+                        "PA Prestação": "",
+                        "Sugestão Glosa (R$)": 0.0,
+                        "Reconsideração Glosa (R$)": 0.0,
+                        "Manifestação MTS": ""
+                    })
+                pd.DataFrame(financeiro_list).to_excel(writer, sheet_name="Controle Financeiro", index=False)
+
+            for sheet in writer.sheets.values():
+                apply_excel_styles(sheet)
+ 
+        output.seek(0)
+        
+        nome_arq = f"Prefinance_Exportacao_{razao_social.replace(' ', '_')}_{etapa}.xlsx"
+        headers = {
+            'Content-Disposition': f'attachment; filename="{nome_arq}"'
+        }
+        return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+        
+    except Exception as e:
+        error_msg = safe_str_decode(e)
+        raise HTTPException(status_code=500, detail=f"Erro ao exportar dados temporários: {error_msg}")
 
 if __name__ == "__main__":
     import uvicorn

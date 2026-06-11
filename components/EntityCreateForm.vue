@@ -37,9 +37,15 @@
           <div style="width:44px;height:44px;border-radius:11px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           </div>
-          <div>
-            <h2 style="font-size:20px;font-weight:700;color:#1e293b">Cadastro de Formalização</h2>
-            <p style="font-size:13px;color:#94a3b8">Preencha os dados jurídicos para iniciar o cadastro</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h2 style="font-size:20px;font-weight:700;color:#1e293b">Cadastro de Formalização</h2>
+              <p style="font-size:13px;color:#94a3b8">Preencha os dados jurídicos para iniciar o cadastro</p>
+            </div>
+            <button type="button" @click="exportEtapa('formalizacao')" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar Etapa (Excel)
+            </button>
           </div>
         </div>
 
@@ -152,9 +158,15 @@
           <div style="width:44px;height:44px;border-radius:11px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
-          <div>
-            <h2 style="font-size:20px;font-weight:700;color:#1e293b">Dados da Parceria</h2>
-            <p style="font-size:13px;color:#94a3b8">Termo, vigência, fiscal e metas</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h2 style="font-size:20px;font-weight:700;color:#1e293b">Dados da Parceria</h2>
+              <p style="font-size:13px;color:#94a3b8">Termo, vigência, fiscal e metas</p>
+            </div>
+            <button type="button" @click="exportEtapa('parceria')" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar Etapa (Excel)
+            </button>
           </div>
         </div>
 
@@ -261,9 +273,15 @@
           <div style="width:44px;height:44px;border-radius:11px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
-          <div>
-            <h2 style="font-size:20px;font-weight:700;color:#1e293b">Controle Financeiro</h2>
-            <p style="font-size:13px;color:#94a3b8">Cronograma de parcelas, valores e prestação de contas</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h2 style="font-size:20px;font-weight:700;color:#1e293b">Controle Financeiro</h2>
+              <p style="font-size:13px;color:#94a3b8">Cronograma de parcelas, valores e prestação de contas</p>
+            </div>
+            <button type="button" @click="exportEtapa('financeiro')" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar Etapa (Excel)
+            </button>
           </div>
         </div>
 
@@ -1034,6 +1052,45 @@ const submitForm = async () => {
     }
   } finally {
     isSubmitting.value = false
+  }
+}
+
+const exportEtapa = async (etapa: string) => {
+  try {
+    const parsedValor = form.valor ? parseMoeda(form.valor) : null
+    const repassesFormatados = form.repasses ? form.repasses.map(rep => ({
+      ...rep,
+      repasse_parcela: rep.repasse_parcela ? parseMoeda(rep.repasse_parcela_texto || rep.repasse_parcela) : 0,
+      repasse_retencao: rep.repasse_retencao ? parseMoeda(rep.repasse_retencao) : 0,
+      repasse_valor_final: rep.repasse_valor_final ? parseMoeda(rep.repasse_valor_final) : 0
+    })) : []
+
+    const payload = {
+      ...form,
+      valor: parsedValor,
+      repasses: repassesFormatados
+    }
+
+    const response = await fetch(`/api/export/dados?etapa=${etapa}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+    if (!response.ok) throw new Error('Falha ao exportar planilha Excel')
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `Prefinance_Exportacao_${(form.razao_social || 'Nova_Parceria').replace(/ /g, '_')}_${etapa}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    alert('Erro ao exportar dados da etapa.')
+    console.error(error)
   }
 }
 </script>
