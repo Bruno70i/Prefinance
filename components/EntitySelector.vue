@@ -113,6 +113,9 @@
                   <button class="btn btn-ghost btn-sm" @click="$emit('edit-entity', entity.id)">
                     Editar
                   </button>
+                  <button class="btn btn-ghost btn-sm" @click="exportarEntidade(entity)">
+                    Exportar
+                  </button>
                   <button class="btn btn-ghost btn-sm" style="color:#ef4444" @click="confirmDelete(entity.id, entity.razao_social)" :disabled="isDeletingId === entity.id">
                     {{ isDeletingId === entity.id ? 'Excluindo...' : 'Excluir' }}
                   </button>
@@ -155,6 +158,16 @@ const statusFilter = ref('todos')
 onMounted(async () => {
   await fetchEntities()
 })
+
+function exportarEntidade(entity: Entity) {
+  const nome = (entity.razao_social || 'Entidade').replace(/ /g, '_')
+  const link = document.createElement('a')
+  link.href = `/api/export/entidade/${entity.id}?etapa=todos`
+  link.download = `Prefinance_${nome}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
 
 async function confirmDelete(id: string, name: string) {
   if (confirm(`Tem certeza que deseja excluir a entidade "${name}"? Esta ação removerá em cascata os dados da parceria e os lançamentos financeiros relacionados.`)) {

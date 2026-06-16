@@ -16,7 +16,6 @@ type LazyComponent<T> = DefineComponent<HydrationStrategies, {}, {}, {}, {}, {},
 interface _GlobalComponents {
   EntityCreateForm: typeof import("../../components/EntityCreateForm.vue")['default']
   EntityCreateFormTemplate: typeof import("../../components/EntityCreateFormTemplate.vue")['default']
-  EntityForm: typeof import("../../components/EntityForm.vue")['default']
   EntitySelector: typeof import("../../components/EntitySelector.vue")['default']
   NuxtWelcome: typeof import("../../node_modules/nuxt/dist/app/components/welcome.vue")['default']
   NuxtLayout: typeof import("../../node_modules/nuxt/dist/app/components/nuxt-layout")['default']
@@ -43,7 +42,6 @@ interface _GlobalComponents {
   NuxtIsland: typeof import("../../node_modules/nuxt/dist/app/components/nuxt-island")['default']
   LazyEntityCreateForm: LazyComponent<typeof import("../../components/EntityCreateForm.vue")['default']>
   LazyEntityCreateFormTemplate: LazyComponent<typeof import("../../components/EntityCreateFormTemplate.vue")['default']>
-  LazyEntityForm: LazyComponent<typeof import("../../components/EntityForm.vue")['default']>
   LazyEntitySelector: LazyComponent<typeof import("../../components/EntitySelector.vue")['default']>
   LazyNuxtWelcome: LazyComponent<typeof import("../../node_modules/nuxt/dist/app/components/welcome.vue")['default']>
   LazyNuxtLayout: LazyComponent<typeof import("../../node_modules/nuxt/dist/app/components/nuxt-layout")['default']>

@@ -85,21 +85,47 @@
               <div class="form-grid form-grid-3">
                 <div>
                   <label class="field-label">CNPJ Raiz<span class="field-required">*</span></label>
-                  <input type="text" v-model="form.cnpj" placeholder="00.000.000/0000-00" @input="handleCnpjInput" required />
+                  <input id="cnpj" type="text" v-model="form.cnpj" placeholder="00.000.000/0000-00" @input="handleCnpjInput" @blur="verificarCnpj(); verificarGrupoRaiz(); consultarBrasilApi()" required />
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span v-if="cnpjPartes.tipo !== 'INDEFINIDO'"
+                          :style="{ padding:'2px 8px', borderRadius:'12px', fontSize:'12px', fontWeight:600,
+                                    color:'#fff', background: cnpjPartes.tipo === 'MATRIZ' ? '#0b5394' : '#0e7490' }">
+                      {{ rotuloEstabelecimento }}
+                    </span>
+                    <span v-if="cnpjPartes.raiz" style="font-size:12px; color:#64748b;">
+                      Raiz: {{ cnpjPartes.raiz }}
+                    </span>
+                  </div>
+                  <div style="margin-top: 4px;" v-if="statusBrasilApi !== 'idle'">
+                    <span v-if="statusBrasilApi === 'buscando'" style="font-size:12px;color:#64748b">
+                      Consultando dados públicos…
+                    </span>
+                    <span v-else-if="statusBrasilApi === 'ok'" style="font-size:12px;color:#16a34a">
+                      ✓ Dados sugeridos automaticamente (confira e ajuste se necessário).
+                    </span>
+                    <span v-else-if="statusBrasilApi === 'indisponivel'" style="font-size:12px;color:#94a3b8">
+                      Consulta automática indisponível — preencha manualmente.
+                    </span>
+                  </div>
                   <p class="input-hint" style="color:#ef4444" v-if="errors.cnpj">{{ errors.cnpj }}</p>
                 </div>
                 <div style="grid-column:span 2">
                   <label class="field-label">Razão Social / Nome da Entidade<span class="field-required">*</span></label>
-                  <input type="text" v-model="form.razao_social" placeholder="Nome completo conforme CNPJ" @input="clearError('razao_social')" required />
+                  <input id="razao_social" type="text" v-model="form.razao_social" placeholder="Nome completo conforme CNPJ" @input="clearError('razao_social'); avisoRazaoSocial = ''" @blur="verificarQuaseDuplicatasNome" required />
                   <p class="input-hint" style="color:#ef4444" v-if="errors.razao_social">{{ errors.razao_social }}</p>
+                  <div v-if="avisoRazaoSocial" style="margin-top:6px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:6px; font-size:13px; color:#92400e; line-height: 1.4;">
+                    ⚠️ {{ avisoRazaoSocial }}
+                  </div>
                 </div>
                 <div>
                   <label class="field-label">E-mail Institucional</label>
-                  <input type="email" v-model="form.configuracoes_extras.email_contato" placeholder="entidade@exemplo.org.br"/>
+                  <input id="email_contato" type="email" v-model="form.configuracoes_extras.email_contato" placeholder="entidade@exemplo.org.br" @input="clearError('email_contato')" />
+                  <p class="input-hint" style="color:#ef4444" v-if="errors.email_contato">{{ errors.email_contato }}</p>
                 </div>
                 <div>
                   <label class="field-label">Telefone / WhatsApp</label>
-                  <input type="text" v-model="form.configuracoes_extras.telefone" placeholder="(00) 00000-0000" @input="handlePhoneInput" />
+                  <input id="telefone" type="text" :value="form.configuracoes_extras.telefone" placeholder="(00) 00000-0000" @input="(e) => { handlePhoneInput(e); clearError('telefone') }" />
+                  <p class="input-hint" style="color:#ef4444" v-if="errors.telefone">{{ errors.telefone }}</p>
                 </div>
                 <div>
                   <label class="field-label">Representante Legal</label>
@@ -111,8 +137,9 @@
                 </div>
                 <div>
                   <label class="field-label">CPF do Representante Legal</label>
-                  <input type="text" :value="form.configuracoes_extras.cpf_representante" placeholder="000.000.000-00" @input="handleCpfInput" />
+                  <input id="cpf_representante" type="text" :value="form.configuracoes_extras.cpf_representante" placeholder="000.000.000-00" @input="handleCpfInput" @blur="verificarCpf" />
                   <p class="input-hint" style="color:#ef4444" v-if="errors.cpf_representante">{{ errors.cpf_representante }}</p>
+                  <p v-if="avisoCpf" style="color:#b45309; font-size:13px; margin-top:4px">⚠️ {{ avisoCpf }}</p>
                 </div>
               </div>
             </div>
@@ -191,6 +218,19 @@
                 </div>
               </div>
 
+              <!-- Listagem do Grupo Raiz (Passo 08) -->
+              <div v-if="cnpjPartes.tipo === 'FILIAL' && grupoRaiz.estabelecimentos.length > 0"
+                   style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:16px 18px; margin-bottom:20px; font-size:13px; color:#334155;">
+                <p style="margin:0 0 8px; font-weight:600; color:#0369a1; display:flex; align-items:center; gap:6px;">
+                  🏢 Estabelecimentos cadastrados sob a mesma raiz ({{ cnpjPartes.raiz }}):
+                </p>
+                <ul style="margin:0; padding-left:18px;">
+                  <li v-for="est in grupoRaiz.estabelecimentos" :key="est.entidade_id" style="margin-bottom: 4px;">
+                    <strong>{{ est.tipo }} {{ est.ordem }}</strong> — {{ est.razao_social }} ({{ est.cnpj }})
+                  </li>
+                </ul>
+              </div>
+
               <div class="form-grid form-grid-2">
                 <div>
                   <label class="field-label">Ajuste / Termo</label>
@@ -222,6 +262,9 @@
                     <input type="date" v-model="form.parceria.termino_atividades"/>
                   </div>
                 </div>
+                <p v-if="datasVigenciaInvalidas" style="color:#ef4444; font-size:13px; margin-top:4px">
+                  A data de início não pode ser posterior à data de término.
+                </p>
 
                 <div>
                   <label class="field-label">Categorias e Especialidades</label>
@@ -336,7 +379,25 @@
                   <span style="font-weight:700;color:#1d4ed8;font-family:'DM Mono';font-size:12px">
                     {{ String(index + 1).padStart(2,'0') }}/{{ String(form.repasses.length).padStart(2,'0') }}
                   </span>
-                  <input type="text" placeholder="Ex Janeiro/2025" v-model="rep.mes_referencia" />
+                  <div style="display: flex; gap: 4px; align-items: center; width: 100%;">
+                    <select :value="rep.mes_referencia ? rep.mes_referencia.split('.')[0] : '01'" @change="atualizarMes(rep, ($event.target as HTMLSelectElement).value)" style="flex: 1; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family:'DM Mono',monospace; background: white; color: #1e293b;">
+                      <option value="01">01 (Jan)</option>
+                      <option value="02">02 (Fev)</option>
+                      <option value="03">03 (Mar)</option>
+                      <option value="04">04 (Abr)</option>
+                      <option value="05">05 (Mai)</option>
+                      <option value="06">06 (Jun)</option>
+                      <option value="07">07 (Jul)</option>
+                      <option value="08">08 (Ago)</option>
+                      <option value="09">09 (Set)</option>
+                      <option value="10">10 (Out)</option>
+                      <option value="11">11 (Nov)</option>
+                      <option value="12">12 (Dez)</option>
+                    </select>
+                    <select :value="rep.mes_referencia ? rep.mes_referencia.split('.')[1] : '2026'" @change="atualizarAno(rep, ($event.target as HTMLSelectElement).value)" style="flex: 1.2; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family:'DM Mono',monospace; background: white; color: #1e293b;">
+                      <option v-for="ano in anosDisponiveis" :key="ano" :value="String(ano)">{{ ano }}</option>
+                    </select>
+                  </div>
                   <input type="text" placeholder="0,00" v-model="rep.repasse_parcela_texto" @input="updateRepasseParcela(rep)" style="font-family:'DM Mono',monospace" />
                   <input type="date" v-model="rep.repasse_vencimento" />
                   <span></span>
@@ -352,7 +413,7 @@
                   </span>
                   <span v-else class="val-err">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Aviso: A soma das parcelas difere do total — diferença de R$ {{ formatCurrency(Math.abs(somaParcelas - (form.valor || 0))) }}
+                    A soma das parcelas precisa ser igual ao valor total para concluir o cadastro (diferença de R$ {{ formatCurrency(Math.abs(somaParcelas - (form.valor || 0))) }}).
                   </span>
                 </span>
               </div>
@@ -371,31 +432,205 @@
             </div>
           </div>
 
+          <!-- Painel Informativo sobre o Representante Legal (Passo 07) -->
+          <div v-if="resumoRepresentante.total_empresas > 0"
+               style="margin:16px 0; padding:16px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px;">
+            <p style="font-weight:600; color:#92400e; margin:0 0 6px; display:flex; align-items:center; gap:6px;">
+              ℹ️ Informação sobre o representante
+            </p>
+            <p style="margin:0 0 4px; color:#78350f;">
+              Esta pessoa (CPF {{ form.configuracoes_extras.cpf_representante }}) já é representante de
+              <strong>{{ resumoRepresentante.total_empresas }}</strong> empresa(s).
+            </p>
+            <p style="margin:0 0 8px; color:#78350f;">
+              Total já repassado entre todas:
+              <strong>{{ fmtBRL(resumoRepresentante.total_repassado) }}</strong>.
+            </p>
+            <ul style="margin:0; padding-left:18px; color:#92400e; font-size:13px;">
+              <li v-for="emp in resumoRepresentante.empresas" :key="emp.entidade_id" style="margin-bottom: 4px;">
+                {{ emp.razao_social }} ({{ emp.cnpj || 's/ CNPJ' }}) — {{ fmtBRL(emp.total_repassado) }}
+              </li>
+            </ul>
+            <p style="margin:8px 0 0; font-size:12px; color:#a16207;">
+              Esta é apenas uma informação. Não impede a conclusão do cadastro.
+            </p>
+          </div>
+
           <div style="display:flex;justify-content:flex-end;gap:12px">
             <button type="button" class="btn btn-secondary" @click="prevStep">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Voltar
             </button>
-            <button type="submit" class="btn btn-success" :disabled="isSubmitting">
+            <button type="submit" class="btn btn-success" :disabled="!podeConcluir">
               <span v-if="isSubmitting">Salvando...</span>
               <span v-else style="display:flex;align-items:center;gap:6px">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                Efetivar e Concluir Cadastro
+                {{ ehEdicao ? 'Salvar Alterações' : 'Efetivar e Concluir Cadastro' }}
               </span>
             </button>
           </div>
         </div>
       </div>
     </form>
+
+    <!-- Modal de Confirmação Final (Passo 10.5) -->
+    <div v-if="mostrarConfirmacaoModal" class="modal-overlay" @click.self="mostrarConfirmacaoModal = false">
+      <div class="modal-glass-card" style="max-width: 550px; width: 90%; border-radius: 16px; display: flex; flex-direction: column;">
+        <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #f1f5f9;">{{ ehEdicao ? 'Confirmar Alterações' : 'Confirmar Efetivação do Cadastro' }}</h3>
+          <button type="button" @click="mostrarConfirmacaoModal = false" class="btn-close-modal" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #94a3b8;">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 20px; font-size: 14px; color: #cbd5e1; line-height: 1.6; max-height: 60vh; overflow-y: auto;">
+          <p style="margin-top: 0; margin-bottom: 16px; color: #94a3b8;">Por favor, revise o resumo dos dados abaixo antes de consolidar a parceria no banco de dados.</p>
+          
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <strong style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">Razão Social</strong>
+              <span style="font-weight: 600; color: #0f172a; font-size: 15px;">{{ form.razao_social }}</span>
+            </div>
+            
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 150px;">
+                <strong style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">CNPJ</strong>
+                <span style="font-weight: 600; color: #0f172a;">{{ form.cnpj || 'Não Informado' }}</span>
+                <span v-if="cnpjPartes.tipo !== 'INDEFINIDO'" :style="{ marginLeft: '6px', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, color: '#fff', background: cnpjPartes.tipo === 'MATRIZ' ? '#0b5394' : '#0e7490' }">
+                  {{ rotuloEstabelecimento }}
+                </span>
+              </div>
+              <div style="flex: 1; min-width: 150px;">
+                <strong style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">Valor Total</strong>
+                <span style="font-weight: 600; color: #1e3a8a; font-size: 15px;">R$ {{ formatCurrency(form.valor) }}</span>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 150px;">
+                <strong style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">Nº de Parcelas</strong>
+                <span style="font-weight: 600; color: #0f172a;">{{ form.configuracoes_extras.numero_parcelas }} parcela(s)</span>
+              </div>
+              <div style="flex: 1; min-width: 150px;">
+                <strong style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">Soma do Cronograma</strong>
+                <span style="font-weight: 600; color: #16a34a;">R$ {{ formatCurrency(somaParcelas) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Avisos 🟡 Activos no Modal -->
+          <div v-if="resumoRepresentante.total_empresas > 0 || avisoRazaoSocial" style="border-radius: 10px; border: 1px solid #fde68a; background: #fffbeb; padding: 12px 16px; margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px; color: #92400e; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+              ⚠️ Avisos Informativos Ativos:
+            </h4>
+            <ul style="margin: 0; padding-left: 18px; color: #78350f; font-size: 12px; line-height: 1.5; display: flex; flex-direction: column; gap: 6px;">
+              <li v-if="avisoRazaoSocial">{{ avisoRazaoSocial }}</li>
+              <li v-if="resumoRepresentante.total_empresas > 0">
+                Este CPF de representante já possui {{ resumoRepresentante.total_empresas }} empresa(s) cadastrada(s) no sistema (Total repassado de R$ {{ formatCurrency(resumoRepresentante.total_repassado) }}).
+              </li>
+            </ul>
+          </div>
+
+          <p style="margin: 0 0 8px; font-size: 13px; color: #94a3b8; text-align: center; font-style: italic;">
+            Deseja gravar essas informações de forma definitiva?
+          </p>
+        </div>
+        <div class="modal-footer" style="border-top: 1px solid rgba(255,255,255,0.1); padding: 16px 20px; display: flex; justify-content: flex-end; gap: 12px; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px;">
+          <button type="button" @click="mostrarConfirmacaoModal = false" class="btn btn-ghost" style="padding: 10px 16px; font-size: 14px; border: 1px solid #cbd5e1; background: white; border-radius: 8px; color: #475569; cursor: pointer; font-weight: 600;">
+            Cancelar e Ajustar
+          </button>
+          <button type="button" @click="efetivarCadastro" class="btn btn-success" style="padding: 10px 20px; font-size: 14px; background: #16a34a; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+            Confirmar e Salvar
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { validarCNPJ, apenasDigitos, validarCPF, parseCnpj } from '~/utils/validadores'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   activeScreen?: string
-}>()
-const emit = defineEmits(['update-screen'])
+  modo?: 'criar' | 'editar'
+  entidadeId?: string | null
+}>(), {
+  modo: 'criar',
+  entidadeId: null
+})
+const emit = defineEmits(['update-screen', 'salvo'])
+
+const ehEdicao = computed(() => props.modo === 'editar' && !!props.entidadeId)
+
+const carregarEntidade = async (id: string) => {
+  try {
+    const e = await $fetch<any>(`/api/entidades/${id}`)
+
+    // Formalização (colunas reais)
+    form.razao_social = e.razao_social || ''
+    form.cnpj = e.cnpj || ''
+    form.responsavel_nome = e.responsavel_nome || ''
+    form.situacao = e.situacao || ''
+    form.historico = e.historico || ''
+    form.pa_emenda = e.pa_emenda || ''
+    form.localizacao_pa_emenda = e.localizacao_pa_emenda || ''
+    form.emenda_alterada = e.emenda_alterada || ''
+    form.pa_formalizacao = e.pa_formalizacao || ''
+    form.numero_emenda = e.numero_emenda || ''
+    form.vereador = e.vereador || ''
+    form.justificativa = e.justificativa || ''
+    form.valor = e.valor ?? null
+    form.cod_scim = e.cod_scim || ''
+    form.pa_empenho = e.pa_empenho || ''
+    form.objeto_descricao = e.objeto_descricao || ''
+
+    // configuracoes_extras
+    const ex = e.configuracoes_extras || {}
+    form.configuracoes_extras.email_contato = ex.email_contato || ''
+    form.configuracoes_extras.telefone = ex.telefone || ''
+    form.configuracoes_extras.endereco = ex.endereco || ''
+    form.configuracoes_extras.cpf_representante = ex.cpf_representante || ''
+    form.configuracoes_extras.meta_atendimentos = ex.meta_atendimentos ?? null
+    form.configuracoes_extras.historico_formalizacao = ex.historico_formalizacao || ''
+    form.configuracoes_extras.periodicidade_repasse = ex.periodicidade_repasse || 'Mensal'
+    form.configuracoes_extras.dia_repasse = ex.dia_repasse ?? 10
+    form.configuracoes_extras.status_prestacao = ex.status_prestacao || 'Em análise'
+    form.configuracoes_extras.numero_parcelas = ex.numero_parcelas ?? 1
+    form.configuracoes_extras.data_primeiro_repasse = ex.data_primeiro_repasse || ''
+
+    // Parceria
+    const p = e.parceria || {}
+    form.parceria.ajuste_termo = p.ajuste_termo || ''
+    form.parceria.gestor_parceria = p.gestor_parceria || ''
+    form.parceria.projeto = p.projeto || ''
+    form.parceria.inicio_atividades = p.inicio_atividades || ''   // 'YYYY-MM-DD'
+    form.parceria.termino_atividades = p.termino_atividades || ''
+    form.parceria.meta_mes_atendimentos = p.meta_mes_atendimentos || 0
+    form.parceria.atendimento_descricao = p.atendimento_descricao || ''
+    form.parceria.responsavel_entidade = p.responsavel_entidade || ''
+    form.parceria.categorias = p.categorias || {}
+    form.parceria.especialidades = p.especialidades || {}
+
+    // Repasses
+    form.repasses = (e.repasses || []).map((r: any) => ({
+      ...r,
+      repasse_parcela_texto: (r.repasse_parcela ?? 0)
+        .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      repasse_vencimento: r.repasse_vencimento || '',
+      repasse_data_pagamento: r.repasse_data_pagamento || '',
+      prestacao_data_entrega: r.prestacao_data_entrega || ''
+    }))
+  } catch (err) {
+    apiError.value = 'Não foi possível carregar a entidade para edição.'
+    console.error(err)
+  }
+}
+
+onMounted(() => {
+  if (ehEdicao.value && props.entidadeId) carregarEntidade(props.entidadeId)
+})
+
+watch(() => props.entidadeId, (novo) => {
+  if (ehEdicao.value && novo) carregarEntidade(novo)
+})
 
 // Definição das chaves esperadas para cada lançamento de repasse
 interface RepasseForm {
@@ -542,12 +777,38 @@ const form = reactive<EntityForm>({
   }
 })
 
-// Atualiza o valor numérico com base no texto digitado da parcela (moeda BR)
+// Atualiza o valor numérico com base no texto digitado da parcela (moeda BR) e formata o input
 const updateRepasseParcela = (rep: RepasseForm) => {
   if (rep.repasse_parcela_texto !== undefined) {
+    let raw = String(rep.repasse_parcela_texto).replace(/\D/g, '')
+    if (!raw) raw = '0'
+    const formatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    rep.repasse_parcela_texto = formatter.format(Number(raw) / 100)
     rep.repasse_parcela = parseMoeda(rep.repasse_parcela_texto)
-    rep.repasse_valor_final = rep.repasse_parcela
+    rep.repasse_valor_final = rep.repasse_parcela - (rep.repasse_retencao || 0)
   }
+}
+
+const formatarMesReferencia = (val: string): string => {
+  let v = val.replace(/\D/g, '').slice(0, 6)
+  if (v.length > 2) {
+    v = `${v.slice(0, 2)}.${v.slice(2)}`
+  }
+  return v
+}
+
+const anosDisponiveis = Array.from({ length: 16 }, (_, i) => 2020 + i)
+
+const atualizarMes = (rep: any, mes: string) => {
+  const partes = (rep.mes_referencia || '01.2026').split('.')
+  const ano = partes[1] || '2026'
+  rep.mes_referencia = `${mes}.${ano}`
+}
+
+const atualizarAno = (rep: any, ano: string) => {
+  const partes = (rep.mes_referencia || '01.2026').split('.')
+  const mes = partes[0] || '01'
+  rep.mes_referencia = `${mes}.${ano}`
 }
 
 // Estados auxiliares de interface e carregamento
@@ -558,7 +819,9 @@ const apiSuccess = ref('')
 const errors = reactive({
   razao_social: '',
   cnpj: '',
-  cpf_representante: ''
+  cpf_representante: '',
+  email_contato: '',
+  telefone: ''
 })
 
 // Watchers para controle de passos
@@ -571,7 +834,10 @@ watch(() => props.activeScreen, (newVal) => {
 watch(currentStep, (newVal) => {
   if (newVal === 1) emit('update-screen', 'formalizacao');
   else if (newVal === 2) emit('update-screen', 'parceria');
-  else if (newVal === 3) emit('update-screen', 'financeiro');
+  else if (newVal === 3) {
+    emit('update-screen', 'financeiro');
+    carregarResumoRepresentante();
+  }
 })
 
 const gerarCronograma = () => {
@@ -596,11 +862,8 @@ const gerarCronograma = () => {
       dataPrevista.setMonth(baseDate.getMonth() + i)
       
       const ano = dataPrevista.getFullYear()
-      const mesesNomes = [
-        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-      ]
-      const competenciaSugerida = `${mesesNomes[dataPrevista.getMonth()]}/${ano}`
+      const mesNum = String(dataPrevista.getMonth() + 1).padStart(2, '0')
+      const competenciaSugerida = `${mesNum}.${ano}`
       const dataPrevistaStr = dataPrevista.toISOString().split('T')[0]
       
       repassesNovos.push({
@@ -624,13 +887,11 @@ const gerarCronograma = () => {
     }
   }
 
-  // Atualiza todas as parcelas existentes com o valor sugerido se o valor total mudou
+  // Atualiza todas as parcelas para o valor dividido igualmente
   for (let i = 0; i < repassesNovos.length; i++) {
-    if (!repassesNovos[i].repasse_parcela_texto || repassesNovos[i].repasse_parcela === 0) {
-      repassesNovos[i].repasse_parcela = valorSugerido
-      repassesNovos[i].repasse_parcela_texto = valorSugeridoFmt
-      repassesNovos[i].repasse_valor_final = valorSugerido
-    }
+    repassesNovos[i].repasse_parcela = valorSugerido
+    repassesNovos[i].repasse_parcela_texto = valorSugeridoFmt
+    repassesNovos[i].repasse_valor_final = valorSugerido
   }
   
   form.repasses = repassesNovos
@@ -655,6 +916,19 @@ const somaParcelas = computed(() => {
 const somaCoincide = computed(() => {
   if (!form.valor) return somaParcelas.value === 0
   return Math.abs(somaParcelas.value - form.valor) < 0.01
+})
+
+const datasVigenciaInvalidas = computed(() => {
+  const ini = form.parceria.inicio_atividades
+  const fim = form.parceria.termino_atividades
+  return !!(ini && fim && ini > fim)
+})
+
+const podeConcluir = computed(() => {
+  if (isSubmitting.value) return false
+  if (!form.valor || form.valor <= 0) return false
+  if (!form.repasses || form.repasses.length === 0) return false
+  return somaCoincide.value && !datasVigenciaInvalidas.value
 })
 
 // Controle dinâmico das especialidades no JSONB
@@ -683,22 +957,54 @@ const nextStep = () => {
     }
 
     if (form.cnpj) {
-      const cnpjLimpo = form.cnpj.replace(/\D/g, '')
-      if (cnpjLimpo.length !== 14) {
-        errors.cnpj = 'O CNPJ deve conter exatamente 14 dígitos.'
+      const cnpjLimpo = apenasDigitos(form.cnpj)
+      if (cnpjLimpo.length !== 14 || !validarCNPJ(cnpjLimpo)) {
+        errors.cnpj = 'CNPJ inválido (verifique os 14 dígitos e o dígito verificador).'
         hasErrors = true
       }
     }
 
     if (form.configuracoes_extras.cpf_representante) {
-      const cpfLimpo = form.configuracoes_extras.cpf_representante.replace(/\D/g, '')
-      if (cpfLimpo.length !== 11) {
-        errors.cpf_representante = 'O CPF do representante deve conter exatamente 11 dígitos.'
+      const cpfLimpo = apenasDigitos(form.configuracoes_extras.cpf_representante)
+      if (cpfLimpo.length !== 11 || !validarCPF(cpfLimpo)) {
+        errors.cpf_representante = 'CPF do representante inválido (dígito verificador).'
         hasErrors = true
       }
     }
 
-    if (hasErrors) return
+    // Validação de E-mail
+    if (form.configuracoes_extras.email_contato) {
+      const email = form.configuracoes_extras.email_contato.trim()
+      const emailRegex = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/
+      if (!emailRegex.test(email)) {
+        errors.email_contato = 'E-mail institucional com formato inválido.'
+        hasErrors = true
+      }
+    }
+
+    // Validação de Telefone
+    if (form.configuracoes_extras.telefone) {
+      const telLimpo = apenasDigitos(form.configuracoes_extras.telefone)
+      if (telLimpo && telLimpo.length !== 10 && telLimpo.length !== 11) {
+        errors.telefone = 'O telefone deve conter exatamente 10 ou 11 dígitos numéricos.'
+        hasErrors = true
+      }
+    }
+
+    if (errors.cnpj || errors.cpf_representante || errors.razao_social || errors.email_contato || errors.telefone) {
+      hasErrors = true
+    }
+
+    if (hasErrors) {
+      focarPrimeiroErro()
+      return
+    }
+  }
+  
+  if (currentStep.value === 2) {
+    if (datasVigenciaInvalidas.value) {
+      return
+    }
   }
   
   if (currentStep.value < 3) {
@@ -711,6 +1017,176 @@ const prevStep = () => {
     currentStep.value--
   }
 }
+
+const avisoRazaoSocial = ref('')
+
+const idParaIgnorar = computed(() => (ehEdicao.value ? props.entidadeId : undefined))
+
+const verificarQuaseDuplicatasNome = async () => {
+  const nome = form.razao_social.trim()
+  if (!nome || nome.length < 4) {
+    avisoRazaoSocial.value = ''
+    return
+  }
+  try {
+    const r = await $fetch<{ duplicatas: { razao_social: string; cnpj: string }[] }>(
+      '/api/entidades/check-razao', { params: { nome, ignorar_id: idParaIgnorar.value } }
+    )
+    if (r.duplicatas && r.duplicatas.length > 0) {
+      const nomes = r.duplicatas.map(d => `${d.razao_social} (${d.cnpj || 'Sem CNPJ'})`).join(', ')
+      avisoRazaoSocial.value = `Razão social muito semelhante já cadastrada: ${nomes}`
+    } else {
+      avisoRazaoSocial.value = ''
+    }
+  } catch (err) {
+    console.error('Erro ao verificar quase duplicatas de nome:', err)
+    avisoRazaoSocial.value = ''
+  }
+}
+
+const verificarCnpj = async () => {
+  const digitos = apenasDigitos(form.cnpj)
+  if (!digitos) { errors.cnpj = ''; return }
+  if (digitos.length !== 14) { errors.cnpj = 'O CNPJ deve conter 14 dígitos.'; return }
+  if (!validarCNPJ(digitos)) { errors.cnpj = 'CNPJ inválido (dígito verificador).'; return }
+  try {
+    const r = await $fetch<{ existe: boolean; razao_social: string | null }>(
+      '/api/entidades/check-cnpj', { params: { cnpj: digitos, ignorar_id: idParaIgnorar.value } }
+    )
+    if (r.existe) {
+      const formatarCnpjLocal = (v: string) => {
+        if (!v) return 's/ CNPJ'
+        const dig = v.replace(/\D/g, '')
+        if (dig.length !== 14) return v
+        return dig.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+      }
+      errors.cnpj = `CNPJ já cadastrado para: ${formatarCnpjLocal(digitos)} - ${r.razao_social}`
+    } else {
+      errors.cnpj = ''
+    }
+  } catch {
+    errors.cnpj = '' // se a checagem online falhar, não bloqueia a digitação; o backend valida no submit
+  }
+}
+
+const avisoCpf = ref<string>('')
+
+const verificarCpf = async () => {
+  avisoCpf.value = ''
+  const d = apenasDigitos(form.configuracoes_extras.cpf_representante)
+  if (d.length !== 11) return
+  if (!validarCPF(d)) { errors.cpf_representante = 'CPF inválido (dígito verificador).'; return }
+  errors.cpf_representante = ''
+  try {
+    const r = await $fetch<{ total_empresas: number; empresas: any[] }>(
+      '/api/representantes/check-cpf', { params: { cpf: d, ignorar_id: idParaIgnorar.value } }
+    )
+    if (r.total_empresas > 0) {
+      const formatarCnpjLocal = (v: string) => {
+        if (!v) return 's/ CNPJ'
+        const dig = v.replace(/\D/g, '')
+        if (dig.length !== 14) return v
+        return dig.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+      }
+      const lista = r.empresas.map(e => `${formatarCnpjLocal(e.cnpj)} - ${e.razao_social}`).join(', ')
+      avisoCpf.value = `Este CPF já é representante de ${r.total_empresas} empresa(s): ${lista}.`
+    }
+  } catch {
+    avisoCpf.value = '' // sem conexão = sem aviso; nunca bloqueia
+  }
+}
+
+interface ResumoRepresentante {
+  total_empresas: number
+  total_repassado: number
+  empresas: { entidade_id: string; razao_social: string; cnpj: string; total_repassado: number }[]
+}
+
+const resumoRepresentante = ref<ResumoRepresentante>({
+  total_empresas: 0, total_repassado: 0, empresas: []
+})
+
+const carregarResumoRepresentante = async () => {
+  const d = apenasDigitos(form.configuracoes_extras.cpf_representante)
+  if (d.length !== 11) {
+    resumoRepresentante.value = { total_empresas: 0, total_repassado: 0, empresas: [] }
+    return
+  }
+  try {
+    resumoRepresentante.value = await $fetch<ResumoRepresentante>(
+      '/api/representantes/check-cpf', { params: { cpf: d, ignorar_id: idParaIgnorar.value } }
+    )
+  } catch {
+    // Falha de rede não pode atrapalhar a conclusão: zera o resumo e segue.
+    resumoRepresentante.value = { total_empresas: 0, total_repassado: 0, empresas: [] }
+  }
+}
+
+const fmtBRL = (v: number) =>
+  (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const cnpjPartes = computed(() => parseCnpj(form.cnpj))
+
+const rotuloEstabelecimento = computed(() => {
+  const p = cnpjPartes.value
+  if (p.tipo === 'MATRIZ') return 'MATRIZ'
+  if (p.tipo === 'FILIAL') return `FILIAL nº ${String(p.numeroFilial).padStart(4, '0')}`
+  return '—'
+})
+
+const grupoRaiz = ref<{ estabelecimentos: any[] }>({ estabelecimentos: [] })
+
+const verificarGrupoRaiz = async () => {
+  const p = cnpjPartes.value
+  if (p.raiz.length !== 8) { grupoRaiz.value = { estabelecimentos: [] }; return }
+  try {
+    grupoRaiz.value = await $fetch(`/api/entidades/por-raiz/${p.raiz}`)
+  } catch {
+    grupoRaiz.value = { estabelecimentos: [] } // tolerante a falha
+  }
+}
+
+const statusBrasilApi = ref<'idle' | 'buscando' | 'ok' | 'indisponivel'>('idle')
+
+const consultarBrasilApi = async () => {
+  const d = apenasDigitos(form.cnpj)
+  if (d.length !== 14 || !validarCNPJ(d)) return // só consulta CNPJ formalmente válido
+  statusBrasilApi.value = 'buscando'
+
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 4000) // timeout de 4s
+
+  try {
+    const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`, { signal: ctrl.signal })
+    clearTimeout(timer)
+    if (!resp.ok) { statusBrasilApi.value = 'indisponivel'; return } // 404/429/5xx → segue manual
+    const dados = await resp.json()
+
+    // Pré-preenche SOMENTE campos vazios (não sobrescreve o que o usuário já digitou).
+    if (!form.razao_social && dados.razao_social) form.razao_social = dados.razao_social
+    if (!form.configuracoes_extras.endereco && dados.logradouro) {
+      form.configuracoes_extras.endereco =
+        [dados.logradouro, dados.numero, dados.bairro, dados.municipio, dados.uf]
+          .filter(Boolean).join(', ')
+    }
+    if (!form.configuracoes_extras.telefone && dados.ddd_telefone_1) {
+      // Formata o telefone sugerido
+      let tel = String(dados.ddd_telefone_1).replace(/\D/g, '')
+      if (tel.length === 10) {
+        form.configuracoes_extras.telefone = tel.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3')
+      } else if (tel.length === 11) {
+        form.configuracoes_extras.telefone = tel.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3')
+      } else {
+        form.configuracoes_extras.telefone = tel
+      }
+    }
+    statusBrasilApi.value = 'ok'
+  } catch {
+    clearTimeout(timer)
+    statusBrasilApi.value = 'indisponivel' // abort/offline/erro → NUNCA bloqueia
+  }
+}
+
 
 // Máscara dinâmica para o CNPJ
 const handleCnpjInput = (event: Event) => {
@@ -808,8 +1284,24 @@ watch(() => form.valor, (newVal) => {
 }, { immediate: true })
 
 // Limpeza de erros específicos
-const clearError = (field: 'razao_social' | 'cnpj' | 'cpf_representante') => {
+const clearError = (field: 'razao_social' | 'cnpj' | 'cpf_representante' | 'email_contato' | 'telefone') => {
   errors[field] = ''
+}
+
+const focarPrimeiroErro = () => {
+  nextTick(() => {
+    const ordemCampos = ['cnpj', 'razao_social', 'email_contato', 'telefone', 'cpf_representante']
+    for (const key of ordemCampos) {
+      if (errors[key as keyof typeof errors]) {
+        const el = document.getElementById(key)
+        if (el) {
+          el.focus()
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          break
+        }
+      }
+    }
+  })
 }
 
 // Controle de Modal do Repasse Mensal
@@ -964,8 +1456,34 @@ const resetForm = () => {
   currentStep.value = 1
 }
 
+const mostrarConfirmacaoModal = ref(false)
+
 // Função de submissão integrada com a API Python (Passo 3)
 const submitForm = async () => {
+  apiError.value = ''
+  apiSuccess.value = ''
+
+  if (!form.valor || form.valor <= 0) {
+    apiError.value = 'Informe o valor total do repasse antes de concluir.'
+    return
+  }
+  if (!somaCoincide.value) {
+    const dif = Math.abs(somaParcelas.value - (form.valor || 0))
+    apiError.value = `A soma das parcelas (R$ ${somaParcelas.value.toFixed(2)}) difere do total ` +
+      `(R$ ${(form.valor || 0).toFixed(2)}). Diferença de R$ ${dif.toFixed(2)}.`
+    return
+  }
+  if (datasVigenciaInvalidas.value) {
+    apiError.value = 'A data de início não pode ser posterior à data de término.'
+    return
+  }
+
+  // Abre o modal de confirmação visual com resumo dos dados antes de salvar
+  mostrarConfirmacaoModal.value = true
+}
+
+const efetivarCadastro = async () => {
+  mostrarConfirmacaoModal.value = false
   apiError.value = ''
   apiSuccess.value = ''
   isSubmitting.value = true
@@ -1023,8 +1541,11 @@ const submitForm = async () => {
       }
     }
 
-    const response = await $fetch<{ status: string; message: string; id: string }>('/api/entidades', {
-      method: 'POST',
+    const url = ehEdicao.value ? `/api/entidades/${props.entidadeId}` : '/api/entidades'
+    const metodo = ehEdicao.value ? 'PUT' : 'POST'
+
+    const response = await $fetch<{ status: string; message: string; id: string }>(url, {
+      method: metodo,
       headers: {
         'Content-Type': 'application/json'
       },
@@ -1032,8 +1553,14 @@ const submitForm = async () => {
     })
 
     if (response && response.status === 'success') {
-      apiSuccess.value = `Parceria, Entidade e Lançamentos Mensais cadastrados de forma atômica no PostgreSQL com sucesso! ID: ${response.id}`
-      resetForm()
+      if (ehEdicao.value) {
+        apiSuccess.value = 'Alterações salvas com sucesso!'
+        emit('salvo')
+        emit('update-screen', 'dashboard')
+      } else {
+        apiSuccess.value = `Parceria, Entidade e Lançamentos Mensais cadastrados de forma atômica no PostgreSQL com sucesso! ID: ${response.id}`
+        resetForm()
+      }
     } else {
       throw new Error('Retorno inválido ou status inconsistente vindo do servidor.')
     }
@@ -1057,6 +1584,16 @@ const submitForm = async () => {
 
 const exportEtapa = async (etapa: string) => {
   try {
+    if (ehEdicao.value && props.entidadeId) {
+      const link = document.createElement('a')
+      link.href = `/api/export/entidade/${props.entidadeId}?etapa=${etapa}`
+      link.download = `Prefinance_${(form.razao_social || 'Entidade').replace(/ /g, '_')}_${etapa}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      return
+    }
+
     const parsedValor = form.valor ? parseMoeda(form.valor) : null
     const repassesFormatados = form.repasses ? form.repasses.map(rep => ({
       ...rep,

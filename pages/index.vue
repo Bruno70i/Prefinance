@@ -43,9 +43,6 @@
           <div class="breadcrumb" id="topbar-breadcrumb">PreFinance › {{ topbarBreadcrumb }}</div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn btn-ghost btn-sm" @click="exportGeral()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar Geral (Excel)
-          </button>
           <button class="btn btn-primary btn-sm" @click="novaParceria()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nova Parceria
           </button>
@@ -60,16 +57,12 @@
         <div v-else class="screen active">
           <EntityCreateForm 
             :active-screen="activeScreen"
+            :modo="editId ? 'editar' : 'criar'"
+            :entidade-id="editId"
             @update-screen="setScreen"
+            @salvo="onSalvo"
           />
         </div>
-      </div>
-    </div>
-
-    <!-- Modal de Edição -->
-    <div v-if="isEditModalOpen" class="modal-overlay" @click.self="closeEditModal">
-      <div class="modal-container">
-        <EntityForm />
       </div>
     </div>
   </div>
@@ -77,12 +70,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import EntityForm from '~/components/EntityForm.vue'
-import { useEntity } from '~/composables/useEntity'
 
 const activeScreen = ref('dashboard')
-const isEditModalOpen = ref(false)
-const { selectedEntity, selectEntity, entitiesList } = useEntity()
+const editId = ref<string | null>(null)
 
 const topbarTitle = computed(() => {
   if (activeScreen.value === 'dashboard') return 'Dashboard de Consulta'
@@ -105,36 +95,18 @@ function setScreen(screen: string) {
 }
 
 function novaParceria() {
+  editId.value = null
   activeScreen.value = 'formalizacao'
 }
 
 function openEntity(id: string) {
-  const entity = entitiesList.value.find(e => e.id === id)
-  if (entity) {
-    selectEntity(entity)
-    isEditModalOpen.value = true
-  }
+  editId.value = id
+  activeScreen.value = 'formalizacao'
 }
 
-function closeEditModal() {
-  selectEntity(null)
-  isEditModalOpen.value = false
-}
-
-import { watch } from 'vue'
-watch(selectedEntity, (newVal) => {
-  if (!newVal) {
-    isEditModalOpen.value = false
-  }
-})
-
-function exportGeral() {
-  const link = document.createElement('a')
-  link.href = '/api/export/geral'
-  link.download = 'Prefinance_Exportacao_Geral.xlsx'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+function onSalvo() {
+  editId.value = null
+  activeScreen.value = 'dashboard'
 }
 
 useHead({

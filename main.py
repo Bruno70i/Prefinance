@@ -9,14 +9,17 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
 import io
 import pandas as pd
+import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
+import excel_modelo
+from validadores import validar_cnpj, apenas_digitos, validar_cpf, parse_cnpj
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -35,6 +38,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError):
+    errors = exc.errors()
+    mensagens = []
+    for err in errors:
+        loc_list = err.get("loc", [])
+        # Remove a palavra 'body' do início do caminho de erro se for do payload de request
+        if loc_list and loc_list[0] == "body":
+            loc_list = loc_list[1:]
+        loc = " -> ".join(str(l) for l in loc_list)
+        msg = err.get("msg", "Erro de validação")
+        # Limpa o prefixo do erro de Pydantic
+        if "Value error, " in msg:
+            msg = msg.replace("Value error, ", "")
+        
+        if loc:
+            mensagens.append(f"{loc}: {msg}")
+        else:
+            mensagens.append(msg)
+            
+    msg_final = "; ".join(mensagens)
+    return JSONResponse(
+        status_code=400,
+        content={"detail": f"Erro de validação: {msg_final}"}
+    )
 
 # Configuração do banco de dados
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -68,6 +100,13 @@ class ParceriaCreate(BaseModel):
     responsavel_entidade: Optional[str] = Field(None, description="Responsável pela entidade na parceria")
     especialidades: Optional[Dict[str, int]] = Field(default_factory=dict, description="Especialidades e metas individuais associadas")
 
+    @model_validator(mode="after")
+    def _validar_vigencia(self):
+        if self.inicio_atividades and self.termino_atividades:
+            if self.inicio_atividades > self.termino_atividades:
+                raise ValueError("A data de início não pode ser posterior à data de término.")
+        return self
+
 # Schema de Repasse Mensal (Tabela 1:N repasses_mensais)
 class RepasseCreate(BaseModel):
     mes_referencia: str = Field(..., description="Mês de referência do repasse (Ex: Janeiro/2025)")
@@ -85,6 +124,14 @@ class RepasseCreate(BaseModel):
     prestacao_sugestao_glosa: Optional[float] = Field(0.0, description="Sugestão de glosa de valores")
     prestacao_reconsideracao: Optional[float] = Field(0.0, description="Valor reconsiderado de glosa")
     prestacao_mts: Optional[str] = Field(None, description="Manifestação Técnica do Setor (MTS)")
+
+    @field_validator("mes_referencia")
+    @classmethod
+    def _formato_mes(cls, v: str) -> str:
+        import re
+        if v and not re.fullmatch(r"\d{2}\.\d{4}", v.strip()):
+            raise ValueError("mes_referencia deve estar no formato MM.AAAA (ex.: 01.2026).")
+        return v.strip()
 
 # Schema Pydantic para validação dos dados de entrada do formulário
 class EntidadeCreate(BaseModel):
@@ -107,6 +154,36 @@ class EntidadeCreate(BaseModel):
     parceria: Optional[ParceriaCreate] = Field(None, description="Dados operacionais da parceria vinculados (tabela 1:1)")
     repasses: Optional[List[RepasseCreate]] = Field(default_factory=list, description="Lista de lançamentos de repasses mensais (tabela 1:N)")
     configuracoes_extras: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Configurações e dados adicionais da entidade")
+
+    @model_validator(mode="after")
+    def _validar_extras(self):
+        import re
+        from validadores import apenas_digitos, validar_cpf
+        
+        extras = self.configuracoes_extras or {}
+        
+        # 1. Validação de E-mail
+        email = extras.get("email_contato")
+        if email:
+            email_str = str(email).strip()
+            if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email_str):
+                raise ValueError("E-mail institucional com formato inválido.")
+                
+        # 2. Validação de Telefone
+        telefone = extras.get("telefone")
+        if telefone:
+            tel_digitos = apenas_digitos(str(telefone))
+            if tel_digitos and len(tel_digitos) not in (10, 11):
+                raise ValueError("O telefone deve conter exatamente 10 ou 11 dígitos.")
+                
+        # 3. Validação de CPF do Representante
+        cpf_rep = extras.get("cpf_representante")
+        if cpf_rep:
+            cpf_digitos = apenas_digitos(str(cpf_rep))
+            if cpf_digitos and not validar_cpf(cpf_digitos):
+                raise ValueError("CPF do representante legal inválido.")
+                
+        return self
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -226,31 +303,60 @@ def create_entidade(entidade: EntidadeCreate):
             detail="Serviço de banco de dados não inicializado. Verifique as configurações de ambiente."
         )
 
+    if entidade.repasses:
+        soma = sum(float(r.repasse_parcela or 0) for r in entidade.repasses)
+        total = float(entidade.valor or 0)
+        if total > 0 and abs(soma - total) > 0.01:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A soma das parcelas ({soma:.2f}) difere do valor total ({total:.2f})."
+            )
+
     # Preparação dos dados para inserção
     try:
         extras_json = json.dumps(entidade.configuracoes_extras) if entidade.configuracoes_extras else json.dumps({})
         
         with engine.begin() as conn:
+            _cnpj_digitos = apenas_digitos(entidade.cnpj or "")
+            if _cnpj_digitos:
+                if not validar_cnpj(_cnpj_digitos):
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CNPJ inválido (dígito verificador não confere).")
+                dup = conn.execute(text("""
+                    SELECT razao_social FROM entidades
+                    WHERE regexp_replace(cnpj, '\\D', '', 'g') = :d LIMIT 1
+                """), {"d": _cnpj_digitos}).fetchone()
+                if dup:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"CNPJ já cadastrado para: {dup.razao_social}")
+
+            _cnpj_raiz = _cnpj_digitos[0:8] if len(_cnpj_digitos) == 14 else None
+            _cnpj_ordem = _cnpj_digitos[8:12] if len(_cnpj_digitos) == 14 else None
+
+            _extras = entidade.configuracoes_extras or {}
+            _cpf_rep = apenas_digitos(str(_extras.get("cpf_representante") or "")) or None
+            _telefone = apenas_digitos(str(_extras.get("telefone") or "")) or None
+
             # Executa a inserção retornando o id gerado
             query_insert = text("""
                 INSERT INTO entidades (
                     razao_social, cnpj, responsavel_nome, situacao, historico, 
                     pa_emenda, localizacao_pa_emenda, emenda_alterada, pa_formalizacao, 
                     numero_emenda, vereador, justificativa, valor, cod_scim, pa_empenho, 
-                    objeto_descricao, configuracoes_extras
+                    objeto_descricao, configuracoes_extras,
+                    cpf_representante, telefone, cnpj_raiz, cnpj_ordem
                 )
                 VALUES (
                     :razao_social, :cnpj, :responsavel, :situacao, :historico, 
                     :pa_emenda, :localizacao_pa_emenda, :emenda_alterada, :pa_formalizacao, 
                     :numero_emenda, :vereador, :justificativa, :valor, :cod_scim, :pa_empenho, 
-                    :objeto_descricao, :extras
+                    :objeto_descricao, :extras,
+                    :cpf_representante, :telefone, :cnpj_raiz, :cnpj_ordem
                 )
                 RETURNING id;
             """)
             
             result = conn.execute(query_insert, {
                 "razao_social": entidade.razao_social.strip(),
-                "cnpj": entidade.cnpj.strip() if entidade.cnpj else None,
+                "cnpj": _cnpj_digitos if _cnpj_digitos else None,
                 "responsavel": entidade.responsavel_nome.strip() if entidade.responsavel_nome else None,
                 "situacao": entidade.situacao.strip() if entidade.situacao else None,
                 "historico": entidade.historico.strip() if entidade.historico else None,
@@ -265,7 +371,11 @@ def create_entidade(entidade: EntidadeCreate):
                 "cod_scim": entidade.cod_scim.strip() if entidade.cod_scim else None,
                 "pa_empenho": entidade.pa_empenho.strip() if entidade.pa_empenho else None,
                 "objeto_descricao": entidade.objeto_descricao.strip() if entidade.objeto_descricao else None,
-                "extras": extras_json
+                "extras": extras_json,
+                "cpf_representante": _cpf_rep,
+                "telefone": _telefone,
+                "cnpj_raiz": _cnpj_raiz,
+                "cnpj_ordem": _cnpj_ordem
             })
             
             # Recupera o ID gerado pelo Postgres
@@ -373,6 +483,221 @@ def create_entidade(entidade: EntidadeCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro inesperado no servidor: {error_msg}"
         )
+
+@app.get("/api/entidades/check-cnpj")
+def check_cnpj(cnpj: str, ignorar_id: str | None = None):
+    """Retorna se o CNPJ já existe e, em caso afirmativo, qual entidade o possui."""
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    digitos = apenas_digitos(cnpj)
+    resposta = {"existe": False, "valido": validar_cnpj(digitos), "entidade_id": None, "razao_social": None}
+    if len(digitos) != 14:
+        return resposta
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, razao_social FROM entidades
+            WHERE regexp_replace(cnpj, '\\D', '', 'g') = :d
+              AND (:ignorar_id IS NULL OR id <> :ignorar_id)
+            LIMIT 1
+        """), {"d": digitos, "ignorar_id": ignorar_id}).fetchone()
+        if row:
+            resposta["existe"] = True
+            resposta["entidade_id"] = str(row.id)
+            resposta["razao_social"] = row.razao_social
+    return resposta
+
+@app.get("/api/representantes/check-cpf")
+def check_cpf(cpf: str, ignorar_id: str | None = None):
+    """
+    Lista as entidades em que o CPF já é representante e agrega totais.
+    NÃO bloqueia nada — é informativo. `ignorar_id` exclui a própria entidade (modo edição).
+    """
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    digitos = apenas_digitos(cpf)
+    resp = {
+        "valido": validar_cpf(digitos),
+        "total_empresas": 0,
+        "total_repassado": 0.0,
+        "empresas": [],
+    }
+    if len(digitos) != 11:
+        return resp
+
+    with engine.connect() as conn:
+        params = {"cpf": digitos}
+        filtro_id = ""
+        if ignorar_id:
+            filtro_id = "AND e.id <> :ignorar_id"
+            params["ignorar_id"] = ignorar_id
+
+        # Empresas dessa pessoa + valor total de cada parceria
+        rows = conn.execute(text(f"""
+            SELECT e.id, e.razao_social, e.cnpj,
+                   COALESCE(e.valor, 0) AS total_pago
+            FROM entidades e
+            WHERE e.cpf_representante = :cpf {filtro_id}
+            ORDER BY e.razao_social
+        """), params).fetchall()
+
+        empresas = []
+        total_geral = 0.0
+        for row in rows:
+            total_geral += float(row.total_pago or 0)
+            empresas.append({
+                "entidade_id": str(row.id),
+                "razao_social": row.razao_social,
+                "cnpj": row.cnpj,
+                "total_repassado": float(row.total_pago or 0),
+            })
+        resp["empresas"] = empresas
+        resp["total_empresas"] = len(empresas)
+        resp["total_repassado"] = total_geral
+    return resp
+
+@app.get("/api/entidades/por-raiz/{raiz}")
+def entidades_por_raiz(raiz: str):
+    """Lista todos os estabelecimentos (matriz + filiais) de uma mesma raiz de CNPJ."""
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    raiz_digitos = "".join(ch for ch in (raiz or "") if ch.isdigit())[:8]
+    if len(raiz_digitos) != 8:
+        return {"raiz": raiz_digitos, "estabelecimentos": []}
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, razao_social, cnpj, cnpj_ordem
+            FROM entidades
+            WHERE cnpj_raiz = :raiz
+            ORDER BY cnpj_ordem
+        """), {"raiz": raiz_digitos}).fetchall()
+    return {
+        "raiz": raiz_digitos,
+        "estabelecimentos": [
+            {
+                "entidade_id": str(r.id),
+                "razao_social": r.razao_social,
+                "cnpj": r.cnpj,
+                "ordem": r.cnpj_ordem,
+                "tipo": "MATRIZ" if r.cnpj_ordem == "0001" else "FILIAL",
+            } for r in rows
+        ],
+    }
+
+@app.get("/api/entidades/check-razao")
+def check_razao(nome: str, ignorar_id: str | None = None):
+    """
+    Busca por razões sociais muito parecidas para alertar o usuário (pg_trgm ou ILIKE).
+    `ignorar_id` é usado para excluir a própria entidade em edição.
+    """
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    
+    nome_limpo = nome.strip()
+    if not nome_limpo:
+        return {"duplicatas": []}
+        
+    with engine.connect() as conn:
+        try:
+            # 1. Tenta usar similaridade do pg_trgm
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            query = text("""
+                SELECT id, razao_social, cnpj, similarity(razao_social, :nome) AS sim
+                FROM entidades
+                WHERE similarity(razao_social, :nome) > 0.4
+                  AND (:ignorar_id IS NULL OR id <> :ignorar_id)
+                ORDER BY sim DESC
+                LIMIT 5;
+            """)
+            rows = conn.execute(query, {"nome": nome_limpo, "ignorar_id": ignorar_id}).fetchall()
+            duplicatas = [
+                {
+                    "entidade_id": str(r.id),
+                    "razao_social": r.razao_social,
+                    "cnpj": r.cnpj,
+                    "similaridade": float(r.sim)
+                } for r in rows
+            ]
+            return {"duplicatas": duplicatas}
+        except Exception as e:
+            # Fallback para busca ILIKE caso falhe pg_trgm por falta de permissão ou suporte
+            print(f"pg_trgm falhou, usando fallback ILIKE: {e}")
+            query = text("""
+                SELECT id, razao_social, cnpj
+                FROM entidades
+                WHERE razao_social ILIKE :nome_like
+                  AND (:ignorar_id IS NULL OR id <> :ignorar_id)
+                LIMIT 5;
+            """)
+            rows = conn.execute(query, {"nome_like": f"%{nome_limpo}%", "ignorar_id": ignorar_id}).fetchall()
+            duplicatas = [
+                {
+                    "entidade_id": str(r.id),
+                    "razao_social": r.razao_social,
+                    "cnpj": r.cnpj,
+                    "similaridade": 0.5
+                } for r in rows
+            ]
+            return {"duplicatas": duplicatas}
+
+@app.post("/api/admin/normalizar-competencias")
+def normalizar_competencias():
+    """Normaliza o campo mes_referencia de repasses_mensais antigos para MM.AAAA."""
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    
+    meses_mapeamento = {
+        'janeiro': '01', 'fevereiro': '02', 'marco': '03', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
+        'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12',
+        'january': '01', 'february': '02', 'march': '03', 'april': '04', 'may': '05', 'june': '06',
+        'july': '07', 'august': '08', 'september': '09', 'october': '10', 'november': '11', 'december': '12',
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'jun': '06',
+        'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+    }
+
+    def normalizar_competencia(valor: str) -> str:
+        if not valor:
+            return valor
+        v = valor.strip().lower()
+        if re.fullmatch(r"\d{2}\.\d{4}", v):
+            return v
+        partes = re.split(r"[\/\-\.\s]+", v)
+        if len(partes) != 2:
+            return valor
+        p1, p2 = partes[0], partes[1]
+        mes, ano = "", ""
+        if p2.isdigit() and len(p2) in (2, 4):
+            ano = p2 if len(p2) == 4 else f"20{p2}"
+            if p1 in meses_mapeamento:
+                mes = meses_mapeamento[p1]
+            elif p1.isdigit():
+                mes = p1.zfill(2)
+        elif p1.isdigit() and len(p1) in (2, 4):
+            ano = p1 if len(p1) == 4 else f"20{p1}"
+            if p2 in meses_mapeamento:
+                mes = meses_mapeamento[p2]
+            elif p2.isdigit():
+                mes = p2.zfill(2)
+        if mes and ano and len(mes) == 2 and len(ano) == 4:
+            return f"{mes}.{ano}"
+        return valor
+
+    import re
+    try:
+        with engine.begin() as conn:
+            rows = conn.execute(text("SELECT id, mes_referencia FROM repasses_mensais")).fetchall()
+            alterados = 0
+            for row in rows:
+                original = row.mes_referencia or ""
+                normalizado = normalizar_competencia(original)
+                if original != normalizado:
+                    conn.execute(
+                        text("UPDATE repasses_mensais SET mes_referencia = :n WHERE id = :id"),
+                        {"n": normalizado, "id": row.id}
+                    )
+                    alterados += 1
+            return {"status": "success", "total_repasses": len(rows), "alterados": alterados}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao normalizar: {str(e)}")
 
 @app.get("/api/entidades")
 def list_entidades():
@@ -493,6 +818,95 @@ def list_entidades():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao listar entidades: {error_msg}"
         )
+@app.get("/api/entidades/{entidade_id}")
+def get_entidade_completa(entidade_id: str):
+    """Retorna uma entidade com formalização + parceria + repasses aninhados (para edição)."""
+    if not engine:
+        raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
+    try:
+        uuid.UUID(entidade_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de entidade inválido (UUID).")
+
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT e.*,
+                   p.ajuste_termo, p.inicio_atividades, p.termino_atividades, p.gestor_parceria,
+                   p.projeto, p.categorias, p.atendimento_descricao, p.meta_mes_atendimentos,
+                   p.responsavel_entidade, p.especialidades
+            FROM entidades e
+            LEFT JOIN dados_parceria p ON e.id = p.entidade_id
+            WHERE e.id = :id
+        """), {"id": entidade_id}).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Entidade não encontrada.")
+        m = row._mapping
+
+        reps = conn.execute(text("""
+            SELECT * FROM repasses_mensais
+            WHERE entidade_id = :id
+            ORDER BY mes_referencia ASC
+        """), {"id": entidade_id}).fetchall()
+
+    def d(v):  # date -> 'YYYY-MM-DD'
+        return v.isoformat() if v is not None and hasattr(v, "isoformat") else (v or None)
+
+    extras = m["configuracoes_extras"] or {}
+
+    return {
+        "id": str(m["id"]),
+        # --- Formalização (colunas reais) ---
+        "razao_social": m["razao_social"],
+        "cnpj": m["cnpj"],
+        "responsavel_nome": m["responsavel_nome"],
+        "situacao": m["situacao"],
+        "historico": m["historico"],
+        "pa_emenda": m["pa_emenda"],
+        "localizacao_pa_emenda": m["localizacao_pa_emenda"],
+        "emenda_alterada": m["emenda_alterada"],
+        "pa_formalizacao": m["pa_formalizacao"],
+        "numero_emenda": m["numero_emenda"],
+        "vereador": m["vereador"],
+        "justificativa": m["justificativa"],
+        "valor": float(m["valor"]) if m["valor"] is not None else None,
+        "cod_scim": m["cod_scim"],
+        "pa_empenho": m["pa_empenho"],
+        "objeto_descricao": m["objeto_descricao"],
+        "configuracoes_extras": extras,
+        # --- Parceria (tabela 1:1) ---
+        "parceria": {
+            "ajuste_termo": m["ajuste_termo"],
+            "inicio_atividades": d(m["inicio_atividades"]),
+            "termino_atividades": d(m["termino_atividades"]),
+            "gestor_parceria": m["gestor_parceria"],
+            "projeto": m["projeto"],
+            "categorias": m["categorias"] or {},
+            "atendimento_descricao": m["atendimento_descricao"],
+            "meta_mes_atendimentos": m["meta_mes_atendimentos"] or 0,
+            "responsavel_entidade": m["responsavel_entidade"],
+            "especialidades": m["especialidades"] or {},
+        },
+        # --- Repasses (tabela 1:N) ---
+        "repasses": [
+            {
+                "mes_referencia": r._mapping["mes_referencia"],
+                "repasse_oficio": r._mapping["repasse_oficio"],
+                "repasse_periodo": r._mapping["repasse_periodo"],
+                "repasse_parcela": float(r._mapping["repasse_parcela"] or 0),
+                "repasse_retencao": float(r._mapping["repasse_retencao"] or 0),
+                "repasse_valor_final": float(r._mapping["repasse_valor_final"] or 0),
+                "repasse_vencimento": d(r._mapping["repasse_vencimento"]),
+                "repasse_pa": r._mapping["repasse_pa"],
+                "repasse_data_pagamento": d(r._mapping["repasse_data_pagamento"]),
+                "prestacao_oficio": r._mapping["prestacao_oficio"],
+                "prestacao_data_entrega": d(r._mapping["prestacao_data_entrega"]),
+                "prestacao_pa": r._mapping["prestacao_pa"],
+                "prestacao_sugestao_glosa": float(r._mapping["prestacao_sugestao_glosa"] or 0),
+                "prestacao_reconsideracao": float(r._mapping["prestacao_reconsideracao"] or 0),
+                "prestacao_mts": r._mapping["prestacao_mts"],
+            } for r in reps
+        ],
+    }
 
 @app.put("/api/entidades/{entidade_id}")
 def update_entidade(entidade_id: str, entidade: EntidadeCreate):
@@ -504,6 +918,16 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Serviço de banco de dados não inicializado."
         )
+
+    if entidade.repasses:
+        soma = sum(float(r.repasse_parcela or 0) for r in entidade.repasses)
+        total = float(entidade.valor or 0)
+        if total > 0 and abs(soma - total) > 0.01:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A soma das parcelas ({soma:.2f}) difere do valor total ({total:.2f})."
+            )
+
     try:
         try:
             uuid.UUID(entidade_id)
@@ -522,6 +946,24 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Entidade não encontrada."
                 )
+
+            _cnpj_digitos = apenas_digitos(entidade.cnpj or "")
+            if _cnpj_digitos:
+                if not validar_cnpj(_cnpj_digitos):
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CNPJ inválido (dígito verificador não confere).")
+                dup = conn.execute(text("""
+                    SELECT razao_social FROM entidades
+                    WHERE regexp_replace(cnpj, '\\D', '', 'g') = :d AND id <> :id LIMIT 1
+                """), {"d": _cnpj_digitos, "id": entidade_id}).fetchone()
+                if dup:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"CNPJ já cadastrado para: {dup.razao_social}")
+
+            _cnpj_raiz = _cnpj_digitos[0:8] if len(_cnpj_digitos) == 14 else None
+            _cnpj_ordem = _cnpj_digitos[8:12] if len(_cnpj_digitos) == 14 else None
+
+            _extras = entidade.configuracoes_extras or {}
+            _cpf_rep = apenas_digitos(str(_extras.get("cpf_representante") or "")) or None
+            _telefone = apenas_digitos(str(_extras.get("telefone") or "")) or None
 
             query_update = text("""
                 UPDATE entidades SET
@@ -542,6 +984,10 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
                     pa_empenho = :pa_empenho, 
                     objeto_descricao = :objeto_descricao, 
                     configuracoes_extras = :extras,
+                    cpf_representante = :cpf_representante,
+                    telefone = :telefone,
+                    cnpj_raiz = :cnpj_raiz,
+                    cnpj_ordem = :cnpj_ordem,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = :id;
             """)
@@ -549,7 +995,7 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
             conn.execute(query_update, {
                 "id": entidade_id,
                 "razao_social": entidade.razao_social.strip(),
-                "cnpj": entidade.cnpj.strip() if entidade.cnpj else None,
+                "cnpj": _cnpj_digitos if _cnpj_digitos else None,
                 "responsavel": entidade.responsavel_nome.strip() if entidade.responsavel_nome else None,
                 "situacao": entidade.situacao.strip() if entidade.situacao else None,
                 "historico": entidade.historico.strip() if entidade.historico else None,
@@ -564,7 +1010,11 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
                 "cod_scim": entidade.cod_scim.strip() if entidade.cod_scim else None,
                 "pa_empenho": entidade.pa_empenho.strip() if entidade.pa_empenho else None,
                 "objeto_descricao": entidade.objeto_descricao.strip() if entidade.objeto_descricao else None,
-                "extras": extras_json
+                "extras": extras_json,
+                "cpf_representante": _cpf_rep,
+                "telefone": _telefone,
+                "cnpj_raiz": _cnpj_raiz,
+                "cnpj_ordem": _cnpj_ordem
             })
 
             if entidade.parceria:
@@ -919,7 +1369,7 @@ def apply_excel_styles(worksheet):
 @app.get("/api/export/geral")
 def export_geral():
     """
-    Exporta todas as entidades cadastradas e seus repasses para um arquivo Excel com múltiplas abas.
+    Exporta todas as entidades cadastradas e seus repasses para um arquivo Excel com múltiplas abas e formatação do modelo.
     """
     if not engine:
         raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
@@ -938,102 +1388,43 @@ def export_geral():
             """)
             result = conn.execute(query)
             
-            formalizacoes = []
-            parcerias = []
-            financeiro_list = []
+            entidades = [dict(row._mapping) for row in result]
             
-            for row in result:
-                row_map = row._mapping
-                entidade_id = row_map["id"]
-                razao_social = row_map["razao_social"]
-                cnpj = row_map["cnpj"]
+            wb = openpyxl.Workbook()
+            default_sheet = wb.active
+            
+            # 1. Cria a aba Formalização se houver entidades
+            if entidades:
+                ws_form = wb.create_sheet()
+                excel_modelo.build_sheet_formalizacao(ws_form, entidades)
                 
-                # 1. Dados de Formalização
-                formalizacoes.append({
-                    "Razão Social": razao_social,
-                    "CNPJ": cnpj,
-                    "PA Emenda": row_map["pa_emenda"] or "",
-                    "PA Formalização": row_map["pa_formalizacao"] or "",
-                    "Tipo de Instrumento": row_map["situacao"] or "",
-                    "Número da Emenda": row_map["numero_emenda"] or "",
-                    "Vereador Proponente": row_map["vereador"] or "",
-                    "Valor Destinado (R$)": float(row_map["valor"]) if row_map["valor"] is not None else 0.0,
-                    "Responsável Legal": row_map["responsavel_nome"] or "",
-                    "Justificativa": row_map["justificativa"] or "",
-                    "Histórico": row_map["historico"] or ""
-                })
+                # 2. Cria a aba Dados da Parceria
+                ws_parc = wb.create_sheet()
+                excel_modelo.build_sheet_parceria(ws_parc, entidades)
                 
-                # 2. Dados da Parceria
-                if row_map["ajuste_termo"] or row_map["projeto"]:
-                    parcerias.append({
-                        "Razão Social": razao_social,
-                        "CNPJ": cnpj,
-                        "Ajuste / Termo": row_map["ajuste_termo"] or "",
-                        "Gestor da Parceria": row_map["gestor_parceria"] or "",
-                        "Projeto / Objeto": row_map["projeto"] or "",
-                        "Início da Vigência": row_map["inicio_atividades"].strftime('%d/%m/%Y') if row_map["inicio_atividades"] else "",
-                        "Término da Vigência": row_map["termino_atividades"].strftime('%d/%m/%Y') if row_map["termino_atividades"] else "",
-                        "Meta Mensal Atendimentos": row_map["meta_mes_atendimentos"] or 0,
-                        "Responsável Entidade": row_map["responsavel_entidade"] or ""
-                    })
+                # 3. Cria uma aba de Repasse para cada entidade
+                for ent in entidades:
+                    entidade_id = ent["id"]
+                    repasses_query = text("""
+                        SELECT * FROM repasses_mensais 
+                        WHERE entidade_id = :entidade_id 
+                        ORDER BY mes_referencia ASC
+                    """)
+                    repasses_res = conn.execute(repasses_query, {"entidade_id": entidade_id})
+                    repasses = [dict(r._mapping) for r in repasses_res]
+                    
+                    ws_rep = wb.create_sheet()
+                    excel_modelo.build_sheet_repasse(ws_rep, ent, repasses)
+            else:
+                # Caso não tenha nada cadastrado
+                ws_empty = wb.create_sheet(title="Sem dados")
+                ws_empty.cell(row=1, column=1, value="Nenhuma entidade cadastrada no banco de dados.")
                 
-                # 3. Lançamentos Financeiros (Repasses e Prestações de Contas)
-                repasses_query = text("""
-                    SELECT * FROM repasses_mensais 
-                    WHERE entidade_id = :entidade_id 
-                    ORDER BY mes_referencia ASC
-                """)
-                repasses_res = conn.execute(repasses_query, {"entidade_id": entidade_id})
+            if default_sheet.title in wb.sheetnames:
+                wb.remove(default_sheet)
                 
-                for rep in repasses_res:
-                    r = rep._mapping
-                    financeiro_list.append({
-                        "Razão Social": razao_social,
-                        "CNPJ": cnpj,
-                        "PA Empenho": row_map["pa_empenho"] or "",
-                        "Código SCIM": row_map["cod_scim"] or "",
-                        "Descrição do Objeto": row_map["objeto_descricao"] or "",
-                        "Mês Referência": r["mes_referencia"] or "",
-                        "Valor Parcela (R$)": float(r["repasse_parcela"]) if r["repasse_parcela"] is not None else 0.0,
-                        "Retenções (R$)": float(r["repasse_retencao"]) if r["repasse_retencao"] is not None else 0.0,
-                        "Valor Líquido (R$)": float(r["repasse_valor_final"]) if r["repasse_valor_final"] is not None else 0.0,
-                        "Data Vencimento": r["repasse_vencimento"].strftime('%d/%m/%Y') if r["repasse_vencimento"] else "",
-                        "PA Repasse": r["repasse_pa"] or "",
-                        "Data Pagamento": r["repasse_data_pagamento"].strftime('%d/%m/%Y') if r["repasse_data_pagamento"] else "",
-                        "Ofício Prestação": r["prestacao_oficio"] or "",
-                        "Data Entrega Prestação": r["prestacao_data_entrega"].strftime('%d/%m/%Y') if r["prestacao_data_entrega"] else "",
-                        "PA Prestação": r["prestacao_pa"] or "",
-                        "Sugestão Glosa (R$)": float(r["prestacao_sugestao_glosa"]) if r["prestacao_sugestao_glosa"] is not None else 0.0,
-                        "Reconsideração Glosa (R$)": float(r["prestacao_reconsideracao"]) if r["prestacao_reconsideracao"] is not None else 0.0,
-                        "Manifestação MTS": r["prestacao_mts"] or ""
-                    })
-
-            # Cria os DataFrames
-            df_formalizacoes = pd.DataFrame(formalizacoes)
-            df_parcerias = pd.DataFrame(parcerias)
-            df_financeiro = pd.DataFrame(financeiro_list)
-
-            # Grava no buffer BytesIO
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                if not df_formalizacoes.empty:
-                    df_formalizacoes.to_excel(writer, sheet_name="Formalização", index=False)
-                else:
-                    pd.DataFrame(columns=["Sem dados"]).to_excel(writer, sheet_name="Formalização", index=False)
-                
-                if not df_parcerias.empty:
-                    df_parcerias.to_excel(writer, sheet_name="Dados da Parceria", index=False)
-                else:
-                    pd.DataFrame(columns=["Sem dados"]).to_excel(writer, sheet_name="Dados da Parceria", index=False)
-                
-                if not df_financeiro.empty:
-                    df_financeiro.to_excel(writer, sheet_name="Controle Financeiro", index=False)
-                else:
-                    pd.DataFrame(columns=["Sem dados"]).to_excel(writer, sheet_name="Controle Financeiro", index=False)
-
-                for sheet in writer.sheets.values():
-                    apply_excel_styles(sheet)
-
+            wb.save(output)
             output.seek(0)
             
             headers = {
@@ -1048,7 +1439,7 @@ def export_geral():
 @app.get("/api/export/entidade/{entidade_id}")
 def export_entidade(entidade_id: str, etapa: str = "todos"):
     """
-    Exporta dados de uma entidade específica filtrado pela etapa.
+    Exporta dados de uma entidade específica filtrado pela etapa usando o layout modelo.
     """
     if not engine:
         raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
@@ -1074,104 +1465,40 @@ def export_entidade(entidade_id: str, etapa: str = "todos"):
             if not row:
                 raise HTTPException(status_code=404, detail="Entidade não encontrada.")
                 
-            row_map = row._mapping
-            razao_social = row_map["razao_social"]
-            cnpj = row_map["cnpj"]
+            ent = dict(row._mapping)
+            razao_social = ent["razao_social"]
             
+            wb = openpyxl.Workbook()
+            default_sheet = wb.active
+            
+            # 1. Formalização
+            if etapa in ("todos", "formalizacao"):
+                ws_form = wb.create_sheet()
+                excel_modelo.build_sheet_formalizacao(ws_form, [ent])
+            
+            # 2. Dados da Parceria
+            if etapa in ("todos", "parceria"):
+                ws_parc = wb.create_sheet()
+                excel_modelo.build_sheet_parceria(ws_parc, [ent])
+            
+            # 3. Controle Financeiro / Repasses
+            if etapa in ("todos", "financeiro"):
+                repasses_query = text("""
+                    SELECT * FROM repasses_mensais 
+                    WHERE entidade_id = :entidade_id 
+                    ORDER BY mes_referencia ASC
+                """)
+                repasses_res = conn.execute(repasses_query, {"entidade_id": entidade_id})
+                repasses = [dict(r._mapping) for r in repasses_res]
+                
+                ws_rep = wb.create_sheet()
+                excel_modelo.build_sheet_repasse(ws_rep, ent, repasses)
+                
+            if default_sheet.title in wb.sheetnames:
+                wb.remove(default_sheet)
+                
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                
-                # 1. Formalização
-                if etapa in ("todos", "formalizacao"):
-                    data_formalizacao = [{
-                        "Razão Social": razao_social,
-                        "CNPJ": cnpj,
-                        "PA Emenda": row_map["pa_emenda"] or "",
-                        "PA Formalização": row_map["pa_formalizacao"] or "",
-                        "Tipo de Instrumento": row_map["situacao"] or "",
-                        "Número da Emenda": row_map["numero_emenda"] or "",
-                        "Vereador Proponente": row_map["vereador"] or "",
-                        "Valor Destinado (R$)": float(row_map["valor"]) if row_map["valor"] is not None else 0.0,
-                        "Responsável Legal": row_map["responsavel_nome"] or "",
-                        "Justificativa": row_map["justificativa"] or "",
-                        "Histórico": row_map["historico"] or ""
-                    }]
-                    pd.DataFrame(data_formalizacao).to_excel(writer, sheet_name="Formalização", index=False)
-                
-                # 2. Dados da Parceria
-                if etapa in ("todos", "parceria"):
-                    data_parceria = [{
-                        "Razão Social": razao_social,
-                        "CNPJ": cnpj,
-                        "Ajuste / Termo": row_map["ajuste_termo"] or "",
-                        "Gestor da Parceria": row_map["gestor_parceria"] or "",
-                        "Projeto / Objeto": row_map["projeto"] or "",
-                        "Início da Vigência": row_map["inicio_atividades"].strftime('%d/%m/%Y') if row_map["inicio_atividades"] else "",
-                        "Término da Vigência": row_map["termino_atividades"].strftime('%d/%m/%Y') if row_map["termino_atividades"] else "",
-                        "Meta Mensal Atendimentos": row_map["meta_mes_atendimentos"] or 0,
-                        "Responsável Entidade": row_map["responsavel_entidade"] or ""
-                    }]
-                    pd.DataFrame(data_parceria).to_excel(writer, sheet_name="Dados da Parceria", index=False)
-                
-                # 3. Controle Financeiro / Repasses
-                if etapa in ("todos", "financeiro"):
-                    repasses_query = text("""
-                        SELECT * FROM repasses_mensais 
-                        WHERE entidade_id = :entidade_id 
-                        ORDER BY mes_referencia ASC
-                    """)
-                    repasses_res = conn.execute(repasses_query, {"entidade_id": entidade_id})
-                    
-                    financeiro_list = []
-                    for rep in repasses_res:
-                        r = rep._mapping
-                        financeiro_list.append({
-                            "Razão Social": razao_social,
-                            "CNPJ": cnpj,
-                            "PA Empenho": row_map["pa_empenho"] or "",
-                            "Código SCIM": row_map["cod_scim"] or "",
-                            "Descrição do Objeto": row_map["objeto_descricao"] or "",
-                            "Mês Referência": r["mes_referencia"] or "",
-                            "Valor Parcela (R$)": float(r["repasse_parcela"]) if r["repasse_parcela"] is not None else 0.0,
-                            "Retenções (R$)": float(r["repasse_retencao"]) if r["repasse_retencao"] is not None else 0.0,
-                            "Valor Líquido (R$)": float(r["repasse_valor_final"]) if r["repasse_valor_final"] is not None else 0.0,
-                            "Data Vencimento": r["repasse_vencimento"].strftime('%d/%m/%Y') if r["repasse_vencimento"] else "",
-                            "PA Repasse": r["repasse_pa"] or "",
-                            "Data Pagamento": r["repasse_data_pagamento"].strftime('%d/%m/%Y') if r["repasse_data_pagamento"] else "",
-                            "Ofício Prestação": r["prestacao_oficio"] or "",
-                            "Data Entrega Prestação": r["prestacao_data_entrega"].strftime('%d/%m/%Y') if r["prestacao_data_entrega"] else "",
-                            "PA Prestação": r["prestacao_pa"] or "",
-                            "Sugestão Glosa (R$)": float(r["prestacao_sugestao_glosa"]) if r["prestacao_sugestao_glosa"] is not None else 0.0,
-                            "Reconsideração Glosa (R$)": float(r["prestacao_reconsideracao"]) if r["prestacao_reconsideracao"] is not None else 0.0,
-                            "Manifestação MTS": r["prestacao_mts"] or ""
-                        })
-                    if not financeiro_list:
-                        # Se não há repasses ainda, adiciona linha básica vazia apenas com cabeçalho da entidade
-                        financeiro_list.append({
-                            "Razão Social": razao_social,
-                            "CNPJ": cnpj,
-                            "PA Empenho": row_map["pa_empenho"] or "",
-                            "Código SCIM": row_map["cod_scim"] or "",
-                            "Descrição do Objeto": row_map["objeto_descricao"] or "",
-                            "Mês Referência": "",
-                            "Valor Parcela (R$)": 0.0,
-                            "Retenções (R$)": 0.0,
-                            "Valor Líquido (R$)": 0.0,
-                            "Data Vencimento": "",
-                            "PA Repasse": "",
-                            "Data Pagamento": "",
-                            "Ofício Prestação": "",
-                            "Data Entrega Prestação": "",
-                            "PA Prestação": "",
-                            "Sugestão Glosa (R$)": 0.0,
-                            "Reconsideração Glosa (R$)": 0.0,
-                            "Manifestação MTS": ""
-                        })
-                    pd.DataFrame(financeiro_list).to_excel(writer, sheet_name="Controle Financeiro", index=False)
-
-                for sheet in writer.sheets.values():
-                    apply_excel_styles(sheet)
-
+            wb.save(output)
             output.seek(0)
             
             nome_arq = f"Prefinance_Exportacao_{razao_social.replace(' ', '_')}_{etapa}.xlsx"
@@ -1189,157 +1516,90 @@ def export_entidade(entidade_id: str, etapa: str = "todos"):
 @app.post("/api/export/dados")
 def export_dados(dados: dict, etapa: str = "todos"):
     """
-    Exporta os dados enviados diretamente no corpo da requisição para um arquivo Excel (rascunho).
+    Exporta os dados enviados diretamente no corpo da requisição para um arquivo Excel (rascunho) usando o layout modelo.
     """
-    def format_date_str(date_str):
-        if not date_str or not isinstance(date_str, str):
-            return ""
-        parts = date_str.split('-')
-        if len(parts) == 3 and len(parts[0]) == 4:
-            return f"{parts[2]}/{parts[1]}/{parts[0]}"
-        return date_str
-
     try:
         razao_social = dados.get("razao_social") or "Nova Parceria"
-        cnpj = dados.get("cnpj") or ""
+        parceria = dados.get("parceria") or {}
         
+        entidade_unificada = {
+            "id": dados.get("id"),
+            "razao_social": razao_social,
+            "cnpj": dados.get("cnpj") or "",
+            "situacao": dados.get("situacao") or "",
+            "historico": dados.get("historico") or "",
+            "pa_emenda": dados.get("pa_emenda") or "",
+            "localizacao_pa_emenda": dados.get("localizacao_pa_emenda") or "",
+            "emenda_alterada": dados.get("emenda_alterada") or "",
+            "pa_formalizacao": dados.get("pa_formalizacao") or "",
+            "numero_emenda": dados.get("numero_emenda") or "",
+            "vereador": dados.get("vereador") or "",
+            "justificativa": dados.get("justificativa") or "",
+            "valor": dados.get("valor") or 0.0,
+            
+            # Dados da parceria extraídos do dicionário aninhado
+            "ajuste_termo": parceria.get("ajuste_termo") or "",
+            "inicio_atividades": parceria.get("inicio_atividades") or "",
+            "termino_atividades": parceria.get("termino_atividades") or "",
+            "gestor_parceria": parceria.get("gestor_parceria") or "",
+            "projeto": parceria.get("projeto") or "",
+            "categorias": parceria.get("categorias") or [],
+            "atendimento_descricao": parceria.get("atendimento_descricao") or "",
+            "meta_mes_atendimentos": parceria.get("meta_mes_atendimentos") or "",
+            "especialidades": parceria.get("especialidades") or {},
+            "responsavel_entidade": parceria.get("responsavel_entidade") or "",
+            
+            # Dados para o repasse
+            "cod_scim": dados.get("cod_scim") or "",
+            "pa_empenho": dados.get("pa_empenho") or "",
+            "objeto_descricao": dados.get("objeto_descricao") or "",
+        }
+        
+        repasses_raw = dados.get("repasses") or []
+        repasses = []
+        for r in repasses_raw:
+            if isinstance(r, dict):
+                repasses.append({
+                    "mes_referencia": r.get("mes_referencia") or "",
+                    "repasse_oficio": r.get("repasse_oficio") or "",
+                    "repasse_periodo": r.get("repasse_periodo") or "",
+                    "repasse_parcela": r.get("repasse_parcela") or 0.0,
+                    "repasse_retencao": r.get("repasse_retencao") or 0.0,
+                    "repasse_valor_final": r.get("repasse_valor_final") or 0.0,
+                    "repasse_vencimento": r.get("repasse_vencimento") or "",
+                    "repasse_pa": r.get("repasse_pa") or "",
+                    "repasse_data_pagamento": r.get("repasse_data_pagamento") or "",
+                    "prestacao_oficio": r.get("prestacao_oficio") or "",
+                    "prestacao_data_entrega": r.get("prestacao_data_entrega") or "",
+                    "prestacao_pa": r.get("prestacao_pa") or "",
+                    "prestacao_sugestao_glosa": r.get("prestacao_sugestao_glosa") or 0.0,
+                    "prestacao_reconsideracao": r.get("prestacao_reconsideracao") or 0.0,
+                    "prestacao_mts": r.get("prestacao_mts") or "",
+                })
+                
+        wb = openpyxl.Workbook()
+        default_sheet = wb.active
+        
+        # 1. Formalização
+        if etapa in ("todos", "formalizacao"):
+            ws_form = wb.create_sheet()
+            excel_modelo.build_sheet_formalizacao(ws_form, [entidade_unificada])
+            
+        # 2. Dados da Parceria
+        if etapa in ("todos", "parceria"):
+            ws_parc = wb.create_sheet()
+            excel_modelo.build_sheet_parceria(ws_parc, [entidade_unificada])
+            
+        # 3. Controle Financeiro / Repasses
+        if etapa in ("todos", "financeiro"):
+            ws_rep = wb.create_sheet()
+            excel_modelo.build_sheet_repasse(ws_rep, entidade_unificada, repasses)
+            
+        if default_sheet.title in wb.sheetnames:
+            wb.remove(default_sheet)
+            
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            
-            # 1. Formalização
-            if etapa in ("todos", "formalizacao"):
-                val_destinado = dados.get("valor")
-                try:
-                    val_destinado = float(val_destinado) if val_destinado is not None and str(val_destinado).strip() != "" else 0.0
-                except (ValueError, TypeError):
-                    val_destinado = 0.0
-                    
-                data_formalizacao = [{
-                    "Razão Social": razao_social,
-                    "CNPJ": cnpj,
-                    "PA Emenda": dados.get("pa_emenda") or "",
-                    "PA Formalização": dados.get("pa_formalizacao") or "",
-                    "Tipo de Instrumento": dados.get("situacao") or "",
-                    "Número da Emenda": dados.get("numero_emenda") or "",
-                    "Vereador Proponente": dados.get("vereador") or "",
-                    "Valor Destinado (R$)": val_destinado,
-                    "Responsável Legal": dados.get("responsavel_nome") or "",
-                    "Justificativa": dados.get("justificativa") or "",
-                    "Histórico": dados.get("historico") or ""
-                }]
-                pd.DataFrame(data_formalizacao).to_excel(writer, sheet_name="Formalização", index=False)
-            
-            # 2. Dados da Parceria
-            if etapa in ("todos", "parceria"):
-                ajuste_termo = ""
-                gestor_parceria = ""
-                projeto = ""
-                inicio_atividades = ""
-                termino_atividades = ""
-                meta_mes_atendimentos = 0
-                responsavel_entidade = ""
-                
-                parceria = dados.get("parceria")
-                if isinstance(parceria, dict):
-                    ajuste_termo = parceria.get("ajuste_termo") or ""
-                    gestor_parceria = parceria.get("gestor_parceria") or ""
-                    projeto = parceria.get("projeto") or ""
-                    inicio_atividades = format_date_str(parceria.get("inicio_atividades"))
-                    termino_atividades = format_date_str(parceria.get("termino_atividades"))
-                    try:
-                        meta_mes_atendimentos = int(parceria.get("meta_mes_atendimentos")) if parceria.get("meta_mes_atendimentos") is not None else 0
-                    except (ValueError, TypeError):
-                        meta_mes_atendimentos = 0
-                    responsavel_entidade = parceria.get("responsavel_entidade") or ""
-                
-                data_parceria = [{
-                    "Razão Social": razao_social,
-                    "CNPJ": cnpj,
-                    "Ajuste / Termo": ajuste_termo,
-                    "Gestor da Parceria": gestor_parceria,
-                    "Projeto / Objeto": projeto,
-                    "Início da Vigência": inicio_atividades,
-                    "Término da Vigência": termino_atividades,
-                    "Meta Mensal Atendimentos": meta_mes_atendimentos,
-                    "Responsável Entidade": responsavel_entidade
-                }]
-                pd.DataFrame(data_parceria).to_excel(writer, sheet_name="Dados da Parceria", index=False)
-            
-            # 3. Controle Financeiro / Repasses
-            if etapa in ("todos", "financeiro"):
-                financeiro_list = []
-                repasses = dados.get("repasses")
-                if isinstance(repasses, list):
-                    for rep in repasses:
-                        if isinstance(rep, dict):
-                            try:
-                                v_parc = float(rep.get("repasse_parcela")) if rep.get("repasse_parcela") is not None and str(rep.get("repasse_parcela")).strip() != "" else 0.0
-                            except (ValueError, TypeError):
-                                v_parc = 0.0
-                            try:
-                                v_ret = float(rep.get("repasse_retencao")) if rep.get("repasse_retencao") is not None and str(rep.get("repasse_retencao")).strip() != "" else 0.0
-                            except (ValueError, TypeError):
-                                v_ret = 0.0
-                            try:
-                                v_liq = float(rep.get("repasse_valor_final")) if rep.get("repasse_valor_final") is not None and str(rep.get("repasse_valor_final")).strip() != "" else 0.0
-                            except (ValueError, TypeError):
-                                v_liq = 0.0
-                            try:
-                                v_glosa = float(rep.get("prestacao_sugestao_glosa")) if rep.get("prestacao_sugestao_glosa") is not None and str(rep.get("prestacao_sugestao_glosa")).strip() != "" else 0.0
-                            except (ValueError, TypeError):
-                                v_glosa = 0.0
-                            try:
-                                v_recons = float(rep.get("prestacao_reconsideracao")) if rep.get("prestacao_reconsideracao") is not None and str(rep.get("prestacao_reconsideracao")).strip() != "" else 0.0
-                            except (ValueError, TypeError):
-                                v_recons = 0.0
-                                
-                            financeiro_list.append({
-                                "Razão Social": razao_social,
-                                "CNPJ": cnpj,
-                                "PA Empenho": dados.get("pa_empenho") or "",
-                                "Código SCIM": dados.get("cod_scim") or "",
-                                "Descrição do Objeto": dados.get("objeto_descricao") or "",
-                                "Mês Referência": rep.get("mes_referencia") or "",
-                                "Valor Parcela (R$)": v_parc,
-                                "Retenções (R$)": v_ret,
-                                "Valor Líquido (R$)": v_liq,
-                                "Data Vencimento": format_date_str(rep.get("repasse_vencimento")),
-                                "PA Repasse": rep.get("repasse_pa") or "",
-                                "Data Pagamento": format_date_str(rep.get("repasse_data_pagamento")),
-                                "Ofício Prestação": rep.get("prestacao_oficio") or "",
-                                "Data Entrega Prestação": format_date_str(rep.get("prestacao_data_entrega")),
-                                "PA Prestação": rep.get("prestacao_pa") or "",
-                                "Sugestão Glosa (R$)": v_glosa,
-                                "Reconsideração Glosa (R$)": v_recons,
-                                "Manifestação MTS": rep.get("prestacao_mts") or ""
-                            })
-                
-                if not financeiro_list:
-                    financeiro_list.append({
-                        "Razão Social": razao_social,
-                        "CNPJ": cnpj,
-                        "PA Empenho": dados.get("pa_empenho") or "",
-                        "Código SCIM": dados.get("cod_scim") or "",
-                        "Descrição do Objeto": dados.get("objeto_descricao") or "",
-                        "Mês Referência": "",
-                        "Valor Parcela (R$)": 0.0,
-                        "Retenções (R$)": 0.0,
-                        "Valor Líquido (R$)": 0.0,
-                        "Data Vencimento": "",
-                        "PA Repasse": "",
-                        "Data Pagamento": "",
-                        "Ofício Prestação": "",
-                        "Data Entrega Prestação": "",
-                        "PA Prestação": "",
-                        "Sugestão Glosa (R$)": 0.0,
-                        "Reconsideração Glosa (R$)": 0.0,
-                        "Manifestação MTS": ""
-                    })
-                pd.DataFrame(financeiro_list).to_excel(writer, sheet_name="Controle Financeiro", index=False)
-
-            for sheet in writer.sheets.values():
-                apply_excel_styles(sheet)
- 
+        wb.save(output)
         output.seek(0)
         
         nome_arq = f"Prefinance_Exportacao_{razao_social.replace(' ', '_')}_{etapa}.xlsx"
