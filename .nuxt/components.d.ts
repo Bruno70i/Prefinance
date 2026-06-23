@@ -14,6 +14,7 @@ type HydrationStrategies = {
 type LazyComponent<T> = DefineComponent<HydrationStrategies, {}, {}, {}, {}, {}, {}, { hydrated: () => void }> & T
 
 
+export const AssistenteIA: typeof import("../components/AssistenteIA.vue")['default']
 export const EntityCreateForm: typeof import("../components/EntityCreateForm.vue")['default']
 export const EntityCreateFormTemplate: typeof import("../components/EntityCreateFormTemplate.vue")['default']
 export const EntitySelector: typeof import("../components/EntitySelector.vue")['default']
@@ -40,6 +41,7 @@ export const Head: typeof import("../node_modules/nuxt/dist/head/runtime/compone
 export const Html: typeof import("../node_modules/nuxt/dist/head/runtime/components")['Html']
 export const Body: typeof import("../node_modules/nuxt/dist/head/runtime/components")['Body']
 export const NuxtIsland: typeof import("../node_modules/nuxt/dist/app/components/nuxt-island")['default']
+export const LazyAssistenteIA: LazyComponent<typeof import("../components/AssistenteIA.vue")['default']>
 export const LazyEntityCreateForm: LazyComponent<typeof import("../components/EntityCreateForm.vue")['default']>
 export const LazyEntityCreateFormTemplate: LazyComponent<typeof import("../components/EntityCreateFormTemplate.vue")['default']>
 export const LazyEntitySelector: LazyComponent<typeof import("../components/EntitySelector.vue")['default']>

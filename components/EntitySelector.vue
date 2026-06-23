@@ -92,6 +92,7 @@
               <th>CNPJ</th>
               <th>Resp. Legal</th>
               <th>Status</th>
+              <th>Criado por</th>
               <th>Ações</th>
             </tr>
           </thead>
@@ -109,6 +110,16 @@
                 </span>
               </td>
               <td>
+                <button v-if="entity.criado_por" class="btn btn-ghost btn-sm" style="padding: 2px 8px; cursor: pointer;"
+                        @click="alternarData(entity.id)">
+                  {{ entity.criado_por }}
+                </button>
+                <span v-else style="color:#94a3b8">—</span>
+                <div v-if="mostrarDataId === entity.id" style="font-size: 11px; color: #475569; margin-top: 4px; font-weight: 500;">
+                  🕒 {{ formatarDataHora(entity.created_at) }}
+                </div>
+              </td>
+              <td>
                 <div style="display:flex; gap:8px">
                   <button class="btn btn-ghost btn-sm" @click="$emit('edit-entity', entity.id)">
                     Editar
@@ -123,7 +134,7 @@
               </td>
             </tr>
             <tr v-if="filteredEntities.length === 0">
-              <td colspan="6" style="text-align: center; color: #94a3b8; padding: 30px;">
+              <td colspan="7" style="text-align: center; color: #94a3b8; padding: 30px;">
                 Nenhum registro encontrado.
               </td>
             </tr>
@@ -154,16 +165,28 @@ const isDeletingId = ref<string | null>(null)
 
 const searchQuery = ref('')
 const statusFilter = ref('todos')
+const mostrarDataId = ref<string | null>(null)
+
+function alternarData(id: string) {
+  mostrarDataId.value = mostrarDataId.value === id ? null : id
+}
+
+function formatarDataHora(iso?: string | null) {
+  if (!iso) return 'data não registrada'
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  })
+}
 
 onMounted(async () => {
   await fetchEntities()
 })
 
 function exportarEntidade(entity: Entity) {
-  const nome = (entity.razao_social || 'Entidade').replace(/ /g, '_')
+  const nome = entity.razao_social || 'Entidade'
   const link = document.createElement('a')
   link.href = `/api/export/entidade/${entity.id}?etapa=todos`
-  link.download = `Prefinance_${nome}.xlsx`
+  link.download = `${nome} - Geral.xlsx`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)

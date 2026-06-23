@@ -6,8 +6,9 @@ export interface Entity {
   cnpj: string | null
   responsavel_nome: string | null
   configuracoes_extras: Record<string, any>
-  created_at?: string
-  updated_at?: string
+  created_at?: string | null
+  updated_at?: string | null
+  criado_por?: string | null
 }
 
 // Estado global reativo

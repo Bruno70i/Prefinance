@@ -5,7 +5,7 @@ import uuid
 import json
 from datetime import date
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, UploadFile, File, Response, Request, Depends
 from fastapi.responses import StreamingResponse
 import io
 import pandas as pd
@@ -20,6 +20,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import excel_modelo
 from validadores import validar_cnpj, apenas_digitos, validar_cpf, parse_cnpj
+import ia_contexto
+import ollama_service
+import import_planilha
+import auth
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -96,7 +100,7 @@ class ParceriaCreate(BaseModel):
     projeto: Optional[str] = Field(None, description="Nome do projeto da parceria")
     categorias: Optional[Dict[str, bool]] = Field(default_factory=dict, description="Categorias/Áreas da parceria (booleanos)")
     atendimento_descricao: Optional[str] = Field(None, description="Público-alvo ou descrição dos atendimentos")
-    meta_mes_atendimentos: Optional[int] = Field(0, description="Meta mensal total de atendimentos da parceria")
+    meta_mes_atendimentos: Optional[str] = Field(None, description="Meta mensal total de atendimentos da parceria")
     responsavel_entidade: Optional[str] = Field(None, description="Responsável pela entidade na parceria")
     especialidades: Optional[Dict[str, int]] = Field(default_factory=dict, description="Especialidades e metas individuais associadas")
 
@@ -199,6 +203,12 @@ class EntidadeCreate(BaseModel):
         }
     )
 
+class ChatRequest(BaseModel):
+    pergunta: str = Field(..., min_length=1, description="Pergunta do usuário")
+    historico: Optional[List[Dict[str, str]]] = Field(default_factory=list,
+        description="Mensagens anteriores [{role:'user'|'assistant', content:'...'}]")
+    contexto_planilha: Optional[str] = Field(default=None, description="Texto vindo da planilha de upload")
+
 def safe_str_decode(err: Exception) -> str:
     """
     Decodifica com segurança a mensagem de erro para evitar erros de UTF-8 no Windows,
@@ -254,12 +264,116 @@ def safe_str_decode(err: Exception) -> str:
                 pass
         return "Conexão rejeitada pelo banco de dados (provavelmente senha incorreta do PostgreSQL no seu arquivo .env ou banco offline)."
 
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1)
+    senha: str = Field(..., min_length=1)
+
+class UsuarioCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=80)
+    nome: str = Field(..., min_length=1, max_length=160)
+    senha: str = Field(..., min_length=4)
+    ativo: bool = True
+
+class UsuarioUpdate(BaseModel):
+    nome: Optional[str] = None
+    senha: Optional[str] = None     # se vier preenchida, redefine a senha (recuperação)
+    ativo: Optional[bool] = None
+
 @app.get("/")
 def read_root():
     return {"status": "online", "message": "PreFinance API Backend está ativo."}
 
+# --- Rotas de Autenticação ---
+@app.post("/api/auth/login")
+def login(req: LoginRequest, response: Response):
+    if auth.autenticar_admin_env(req.username, req.senha):
+        token = auth.criar_token({"sub": req.username, "nome": req.username, "papel": "admin"})
+    else:
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT username, nome, senha_hash, ativo FROM usuarios WHERE username = :u"
+            ), {"u": req.username}).fetchone()
+        if (not row) or (not row.ativo) or (not auth.verificar_senha(req.senha, row.senha_hash)):
+            raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
+        token = auth.criar_token({"sub": row.username, "nome": row.nome, "papel": "usuario"})
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE usuarios SET ultimo_login = CURRENT_TIMESTAMP WHERE username = :u"),
+                             {"u": req.username})
+        except Exception:
+            pass
+
+    response.set_cookie("access_token", token, httponly=True, samesite="lax",
+                        max_age=auth.TOKEN_HORAS * 3600, path="/")
+    return {"ok": True}
+
+@app.get("/api/auth/me")
+def me(usuario: dict = Depends(auth.get_current_user)):
+    return {"username": usuario["sub"], "nome": usuario.get("nome"), "papel": usuario.get("papel")}
+
+@app.post("/api/auth/logout")
+def logout(response: Response):
+    response.delete_cookie("access_token", path="/")
+    return {"ok": True}
+
+# --- CRUD de Usuários (Admin) ---
+@app.get("/api/admin/usuarios")
+def listar_usuarios(admin: dict = Depends(auth.get_current_admin)):
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, username, nome, ativo, criado_em, ultimo_login
+            FROM usuarios ORDER BY nome
+        """)).fetchall()
+    return [{
+        "id": str(r.id), "username": r.username, "nome": r.nome, "ativo": r.ativo,
+        "criado_em": r.criado_em.isoformat() if r.criado_em else None,
+        "ultimo_login": r.ultimo_login.isoformat() if r.ultimo_login else None,
+    } for r in rows]
+
+@app.post("/api/admin/usuarios", status_code=status.HTTP_201_CREATED)
+def criar_usuario(req: UsuarioCreate, admin: dict = Depends(auth.get_current_admin)):
+    if req.username.strip().lower() == auth.ADMIN_LOGIN.lower():
+        raise HTTPException(status_code=400, detail="Esse nome de usuário é reservado ao administrador.")
+    senha_hash = auth.gerar_hash_senha(req.senha)
+    try:
+        with engine.begin() as conn:
+            row = conn.execute(text("""
+                INSERT INTO usuarios (username, nome, senha_hash, ativo)
+                VALUES (:u, :n, :h, :a) RETURNING id
+            """), {"u": req.username.strip(), "n": req.nome.strip(), "h": senha_hash, "a": req.ativo}).fetchone()
+        return {"id": str(row.id), "ok": True}
+    except SQLAlchemyError as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Já existe um usuário com esse username.")
+        raise HTTPException(status_code=500, detail="Erro ao criar usuário.")
+
+@app.put("/api/admin/usuarios/{user_id}")
+def atualizar_usuario(user_id: str, req: UsuarioUpdate, admin: dict = Depends(auth.get_current_admin)):
+    campos, params = [], {"id": user_id}
+    if req.nome is not None:
+        campos.append("nome = :n"); params["n"] = req.nome.strip()
+    if req.ativo is not None:
+        campos.append("ativo = :a"); params["a"] = req.ativo
+    if req.senha:
+        campos.append("senha_hash = :h"); params["h"] = auth.gerar_hash_senha(req.senha)
+    if not campos:
+        return {"ok": True}
+    with engine.begin() as conn:
+        res = conn.execute(text(f"UPDATE usuarios SET {', '.join(campos)} WHERE id = :id"), params)
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    return {"ok": True}
+
+@app.delete("/api/admin/usuarios/{user_id}")
+def excluir_usuario(user_id: str, admin: dict = Depends(auth.get_current_admin)):
+    with engine.begin() as conn:
+        res = conn.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": user_id})
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    return {"ok": True}
+
 @app.get("/api/entidades")
-def get_entidades():
+def get_entidades(usuario: dict = Depends(auth.get_current_user)):
     """
     Lista todas as entidades cadastradas.
     """
@@ -269,7 +383,7 @@ def get_entidades():
     try:
         with engine.begin() as conn:
             query = text("""
-                SELECT id, razao_social, cnpj, responsavel_nome, situacao, numero_emenda, valor, configuracoes_extras 
+                SELECT id, razao_social, cnpj, responsavel_nome, situacao, numero_emenda, valor, configuracoes_extras, created_at, criado_por 
                 FROM entidades 
                 ORDER BY razao_social ASC
             """)
@@ -285,7 +399,9 @@ def get_entidades():
                     "situacao": row.situacao,
                     "numero_emenda": row.numero_emenda,
                     "valor": row.valor,
-                    "configuracoes_extras": row.configuracoes_extras
+                    "configuracoes_extras": row.configuracoes_extras,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                    "criado_por": row.criado_por
                 })
             return entidades
     except Exception as e:
@@ -293,7 +409,7 @@ def get_entidades():
         raise HTTPException(status_code=500, detail=f"Erro ao buscar entidades: {error_msg}")
 
 @app.post("/api/entidades", status_code=status.HTTP_201_CREATED)
-def create_entidade(entidade: EntidadeCreate):
+def create_entidade(entidade: EntidadeCreate, usuario: dict = Depends(auth.get_current_user)):
     """
     Endpoint para inserção de uma nova entidade no banco de dados PostgreSQL.
     """
@@ -342,14 +458,14 @@ def create_entidade(entidade: EntidadeCreate):
                     pa_emenda, localizacao_pa_emenda, emenda_alterada, pa_formalizacao, 
                     numero_emenda, vereador, justificativa, valor, cod_scim, pa_empenho, 
                     objeto_descricao, configuracoes_extras,
-                    cpf_representante, telefone, cnpj_raiz, cnpj_ordem
+                    cpf_representante, telefone, cnpj_raiz, cnpj_ordem, criado_por
                 )
                 VALUES (
                     :razao_social, :cnpj, :responsavel, :situacao, :historico, 
                     :pa_emenda, :localizacao_pa_emenda, :emenda_alterada, :pa_formalizacao, 
                     :numero_emenda, :vereador, :justificativa, :valor, :cod_scim, :pa_empenho, 
                     :objeto_descricao, :extras,
-                    :cpf_representante, :telefone, :cnpj_raiz, :cnpj_ordem
+                    :cpf_representante, :telefone, :cnpj_raiz, :cnpj_ordem, :criado_por
                 )
                 RETURNING id;
             """)
@@ -375,7 +491,8 @@ def create_entidade(entidade: EntidadeCreate):
                 "cpf_representante": _cpf_rep,
                 "telefone": _telefone,
                 "cnpj_raiz": _cnpj_raiz,
-                "cnpj_ordem": _cnpj_ordem
+                "cnpj_ordem": _cnpj_ordem,
+                "criado_por": usuario.get("nome") or usuario.get("sub")
             })
             
             # Recupera o ID gerado pelo Postgres
@@ -485,7 +602,7 @@ def create_entidade(entidade: EntidadeCreate):
         )
 
 @app.get("/api/entidades/check-cnpj")
-def check_cnpj(cnpj: str, ignorar_id: str | None = None):
+def check_cnpj(cnpj: str, ignorar_id: str | None = None, usuario: dict = Depends(auth.get_current_user)):
     """Retorna se o CNPJ já existe e, em caso afirmativo, qual entidade o possui."""
     if not engine:
         raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
@@ -507,7 +624,7 @@ def check_cnpj(cnpj: str, ignorar_id: str | None = None):
     return resposta
 
 @app.get("/api/representantes/check-cpf")
-def check_cpf(cpf: str, ignorar_id: str | None = None):
+def check_cpf(cpf: str, ignorar_id: str | None = None, usuario: dict = Depends(auth.get_current_user)):
     """
     Lista as entidades em que o CPF já é representante e agrega totais.
     NÃO bloqueia nada — é informativo. `ignorar_id` exclui a própria entidade (modo edição).
@@ -556,7 +673,7 @@ def check_cpf(cpf: str, ignorar_id: str | None = None):
     return resp
 
 @app.get("/api/entidades/por-raiz/{raiz}")
-def entidades_por_raiz(raiz: str):
+def entidades_por_raiz(raiz: str, usuario: dict = Depends(auth.get_current_user)):
     """Lista todos os estabelecimentos (matriz + filiais) de uma mesma raiz de CNPJ."""
     if not engine:
         raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
@@ -584,7 +701,7 @@ def entidades_por_raiz(raiz: str):
     }
 
 @app.get("/api/entidades/check-razao")
-def check_razao(nome: str, ignorar_id: str | None = None):
+def check_razao(nome: str, ignorar_id: str | None = None, usuario: dict = Depends(auth.get_current_user)):
     """
     Busca por razões sociais muito parecidas para alertar o usuário (pg_trgm ou ILIKE).
     `ignorar_id` é usado para excluir a própria entidade em edição.
@@ -640,7 +757,7 @@ def check_razao(nome: str, ignorar_id: str | None = None):
             return {"duplicatas": duplicatas}
 
 @app.post("/api/admin/normalizar-competencias")
-def normalizar_competencias():
+def normalizar_competencias(admin: dict = Depends(auth.get_current_admin)):
     """Normaliza o campo mes_referencia de repasses_mensais antigos para MM.AAAA."""
     if not engine:
         raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
@@ -700,7 +817,7 @@ def normalizar_competencias():
         raise HTTPException(status_code=500, detail=f"Erro ao normalizar: {str(e)}")
 
 @app.get("/api/entidades")
-def list_entidades():
+def list_entidades(usuario: dict = Depends(auth.get_current_user)):
     """
     Retorna a lista de todas as entidades cadastradas no banco, enriquecidas com seus
     dados de parceria (1:1) e lançamentos de repasses (1:N).
@@ -752,7 +869,8 @@ def list_entidades():
                     "objeto_descricao": row_map["objeto_descricao"],
                     "configuracoes_extras": extras,
                     "created_at": row_map["created_at"].isoformat() if row_map["created_at"] else None,
-                    "updated_at": row_map["updated_at"].isoformat() if row_map["updated_at"] else None
+                    "updated_at": row_map["updated_at"].isoformat() if row_map["updated_at"] else None,
+                    "criado_por": row_map["criado_por"]
                 }
                 
                 if row_map["ajuste_termo"] or row_map["projeto"]:
@@ -819,7 +937,7 @@ def list_entidades():
             detail=f"Erro ao listar entidades: {error_msg}"
         )
 @app.get("/api/entidades/{entidade_id}")
-def get_entidade_completa(entidade_id: str):
+def get_entidade_completa(entidade_id: str, usuario: dict = Depends(auth.get_current_user)):
     """Retorna uma entidade com formalização + parceria + repasses aninhados (para edição)."""
     if not engine:
         raise HTTPException(status_code=500, detail="Banco de dados não inicializado.")
@@ -882,7 +1000,7 @@ def get_entidade_completa(entidade_id: str):
             "projeto": m["projeto"],
             "categorias": m["categorias"] or {},
             "atendimento_descricao": m["atendimento_descricao"],
-            "meta_mes_atendimentos": m["meta_mes_atendimentos"] or 0,
+            "meta_mes_atendimentos": m["meta_mes_atendimentos"] or "",
             "responsavel_entidade": m["responsavel_entidade"],
             "especialidades": m["especialidades"] or {},
         },
@@ -909,7 +1027,7 @@ def get_entidade_completa(entidade_id: str):
     }
 
 @app.put("/api/entidades/{entidade_id}")
-def update_entidade(entidade_id: str, entidade: EntidadeCreate):
+def update_entidade(entidade_id: str, entidade: EntidadeCreate, usuario: dict = Depends(auth.get_current_user)):
     """
     Atualiza uma entidade existente, incluindo seus dados de parceria e repasses de forma atômica.
     """
@@ -988,7 +1106,8 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
                     telefone = :telefone,
                     cnpj_raiz = :cnpj_raiz,
                     cnpj_ordem = :cnpj_ordem,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = CURRENT_TIMESTAMP,
+                    atualizado_por = :atualizado_por
                 WHERE id = :id;
             """)
             
@@ -1014,7 +1133,8 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
                 "cpf_representante": _cpf_rep,
                 "telefone": _telefone,
                 "cnpj_raiz": _cnpj_raiz,
-                "cnpj_ordem": _cnpj_ordem
+                "cnpj_ordem": _cnpj_ordem,
+                "atualizado_por": usuario.get("nome") or usuario.get("sub")
             })
 
             if entidade.parceria:
@@ -1090,6 +1210,8 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
                     })
 
             return {
+                "status": "success",
+                "message": "Entidade atualizada com sucesso.",
                 "id": entidade_id,
                 "razao_social": entidade.razao_social,
                 "cnpj": entidade.cnpj,
@@ -1115,7 +1237,7 @@ def update_entidade(entidade_id: str, entidade: EntidadeCreate):
         )
 
 @app.get("/api/entidades/{entidade_id}/repasses")
-def get_repasses(entidade_id: str):
+def get_repasses(entidade_id: str, usuario: dict = Depends(auth.get_current_user)):
     """
     Retorna todos os repasses vinculados a uma entidade específica.
     """
@@ -1172,7 +1294,7 @@ def get_repasses(entidade_id: str):
         )
 
 @app.post("/api/entidades/{entidade_id}/repasses", status_code=status.HTTP_201_CREATED)
-def create_repasse_individual(entidade_id: str, repasse: RepasseCreate):
+def create_repasse_individual(entidade_id: str, repasse: RepasseCreate, usuario: dict = Depends(auth.get_current_user)):
     """
     Adiciona um novo repasse mensal a uma entidade existente.
     """
@@ -1261,7 +1383,7 @@ def create_repasse_individual(entidade_id: str, repasse: RepasseCreate):
         )
 
 @app.delete("/api/entidades/{entidade_id}", status_code=status.HTTP_200_OK)
-def delete_entidade(entidade_id: str):
+def delete_entidade(entidade_id: str, usuario: dict = Depends(auth.get_current_user)):
     """
     Exclui uma entidade cadastrada e todos os seus registros relacionados no banco de dados.
     """
@@ -1367,7 +1489,7 @@ def apply_excel_styles(worksheet):
         worksheet.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
 @app.get("/api/export/geral")
-def export_geral():
+def export_geral(usuario: dict = Depends(auth.get_current_user)):
     """
     Exporta todas as entidades cadastradas e seus repasses para um arquivo Excel com múltiplas abas e formatação do modelo.
     """
@@ -1428,7 +1550,7 @@ def export_geral():
             output.seek(0)
             
             headers = {
-                'Content-Disposition': 'attachment; filename="Prefinance_Exportacao_Geral.xlsx"'
+                'Content-Disposition': 'attachment; filename="Geral.xlsx"'
             }
             return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
             
@@ -1437,7 +1559,7 @@ def export_geral():
         raise HTTPException(status_code=500, detail=f"Erro ao exportar dados consolidados: {error_msg}")
 
 @app.get("/api/export/entidade/{entidade_id}")
-def export_entidade(entidade_id: str, etapa: str = "todos"):
+def export_entidade(entidade_id: str, etapa: str = "todos", usuario: dict = Depends(auth.get_current_user)):
     """
     Exporta dados de uma entidade específica filtrado pela etapa usando o layout modelo.
     """
@@ -1501,7 +1623,8 @@ def export_entidade(entidade_id: str, etapa: str = "todos"):
             wb.save(output)
             output.seek(0)
             
-            nome_arq = f"Prefinance_Exportacao_{razao_social.replace(' ', '_')}_{etapa}.xlsx"
+            secao = "Controle Financeiro" if etapa == "financeiro" else ("Dados da Parceria" if etapa == "parceria" else ("Formalização" if etapa == "formalizacao" else "Geral"))
+            nome_arq = f"{razao_social} - {secao}.xlsx"
             headers = {
                 'Content-Disposition': f'attachment; filename="{nome_arq}"'
             }
@@ -1514,7 +1637,7 @@ def export_entidade(entidade_id: str, etapa: str = "todos"):
         raise HTTPException(status_code=500, detail=f"Erro ao exportar dados da entidade: {error_msg}")
 
 @app.post("/api/export/dados")
-def export_dados(dados: dict, etapa: str = "todos"):
+def export_dados(dados: dict, etapa: str = "todos", usuario: dict = Depends(auth.get_current_user)):
     """
     Exporta os dados enviados diretamente no corpo da requisição para um arquivo Excel (rascunho) usando o layout modelo.
     """
@@ -1602,7 +1725,8 @@ def export_dados(dados: dict, etapa: str = "todos"):
         wb.save(output)
         output.seek(0)
         
-        nome_arq = f"Prefinance_Exportacao_{razao_social.replace(' ', '_')}_{etapa}.xlsx"
+        secao = "Controle Financeiro" if etapa == "financeiro" else ("Dados da Parceria" if etapa == "parceria" else ("Formalização" if etapa == "formalizacao" else "Geral"))
+        nome_arq = f"{razao_social} - {secao}.xlsx"
         headers = {
             'Content-Disposition': f'attachment; filename="{nome_arq}"'
         }
@@ -1611,6 +1735,90 @@ def export_dados(dados: dict, etapa: str = "todos"):
     except Exception as e:
         error_msg = safe_str_decode(e)
         raise HTTPException(status_code=500, detail=f"Erro ao exportar dados temporários: {error_msg}")
+
+@app.post("/api/chat/upload-excel")
+async def chat_upload_excel(file: UploadFile = File(...), usuario: dict = Depends(auth.get_current_user)):
+    import ia_excel
+    conteudo = await file.read()
+    return {"contexto_planilha": ia_excel.excel_para_texto(conteudo)}
+
+@app.post("/api/chat")
+def chat(req: ChatRequest, usuario: dict = Depends(auth.get_current_user)):
+    """Responde perguntas sobre os cadastros, com contexto ancorado no banco. Streaming."""
+    if not ollama_service.disponivel():
+        raise HTTPException(
+            status_code=503,
+            detail="Assistente de IA indisponível: verifique se o Ollama está em execução."
+        )
+    # Limita o histórico às últimas 6 trocas para não inflar o prompt
+    historico = (req.historico or [])[-6:]
+    contexto = ia_contexto.montar_contexto(req.pergunta)
+    if req.contexto_planilha:
+        contexto = contexto + "\n\n" + req.contexto_planilha
+
+    def gerar():
+        try:
+            for token in ollama_service.stream_resposta(req.pergunta, contexto, historico):
+                yield token
+        except Exception as e:
+            yield f"\n[Erro ao gerar resposta: {e}]"
+
+    return StreamingResponse(gerar(), media_type="text/plain; charset=utf-8")
+
+@app.post("/api/import/planilha")
+async def importar_planilha(file: UploadFile = File(...), usuario: dict = Depends(auth.get_current_user)):
+    """Lê uma planilha/CSV e devolve os campos para PRÉ-PREENCHER o formulário. NÃO grava no banco."""
+    conteudo = await file.read()
+    if len(conteudo) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Arquivo muito grande (máx. 10 MB).")
+    try:
+        resultado = import_planilha.parse_arquivo(file.filename, conteudo)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Não foi possível ler o arquivo: {e}")
+
+    form = resultado.get("formalizacao") or {}
+    return {
+        "formalizacao": form,
+        "parceria": resultado.get("parceria"),
+        "repasses": resultado.get("repasses", []),
+        "avisos": resultado.get("avisos", []),
+        "campos_preenchidos": len(form),
+    }
+
+@app.get("/api/import/modelo")
+def baixar_modelo_importacao(formato: str = "xlsx", usuario: dict = Depends(auth.get_current_user)):
+    """Gera um arquivo EM BRANCO com os cabeçalhos esperados pela importação."""
+    if formato == "csv":
+        import csv as _csv
+        headers = ["STATUS", "HISTÓRICO", "NOME", "CNPJ", "PA Emenda", "Localização do PA Emenda",
+                   "Emenda Alterada?", "PA Formalização", "N.º", "Vereador", "Justificativa", "Valor"]
+        buf = io.StringIO()
+        w = _csv.writer(buf, delimiter=";")
+        w.writerow(headers)
+        w.writerow([""] * len(headers))
+        dados = ("﻿" + buf.getvalue()).encode("utf-8")
+        return StreamingResponse(
+            io.BytesIO(dados),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="Modelo_Importacao_PreFinance.csv"'},
+        )
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    excel_modelo.build_sheet_formalizacao(wb.create_sheet("tmp1"), [])
+    excel_modelo.build_sheet_parceria(wb.create_sheet("tmp2"), [])
+    excel_modelo.build_sheet_repasse(wb.create_sheet("tmp3"), {"razao_social": ""}, [])
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return StreamingResponse(
+        out,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="Modelo_Importacao_PreFinance.xlsx"'},
+    )
 
 if __name__ == "__main__":
     import uvicorn

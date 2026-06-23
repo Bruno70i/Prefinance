@@ -49,6 +49,34 @@
           </div>
         </div>
 
+        <!-- Importar planilha/CSV para preencher automaticamente -->
+        <div
+          class="import-drop"
+          :class="{ 'is-over': arrastando }"
+          @dragover.prevent="arrastando = true"
+          @dragleave.prevent="arrastando = false"
+          @drop.prevent="onDrop"
+          @click="($refs.inputImport as HTMLInputElement).click()"
+        >
+          <input ref="inputImport" type="file" accept=".xlsx,.xls,.csv" hidden @change="onSelecionarArquivo" />
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0b5394" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p style="margin:6px 0 0; font-weight:600; color:#1e293b">
+            Arraste um Excel/CSV aqui para preencher automaticamente
+          </p>
+          <span style="font-size:12px; color:#64748b">ou clique para selecionar — .xlsx, .xls ou .csv</span>
+          <p v-if="importando" style="margin:8px 0 0; color:#0b5394; font-size:13px">Lendo arquivo…</p>
+          <p v-if="importMsg" style="margin:8px 0 0; color:#16a34a; font-size:13px">✓ {{ importMsg }}</p>
+          <p v-if="importErro" style="margin:8px 0 0; color:#ef4444; font-size:13px">⚠️ {{ importErro }}</p>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:-6px; margin-bottom:16px">
+          <button type="button" class="btn btn-secondary btn-sm" @click.stop="baixarModeloImportacao('xlsx')">
+            ⬇️ Baixar modelo (Excel)
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" @click.stop="baixarModeloImportacao('csv')">
+            ⬇️ Baixar modelo (CSV)
+          </button>
+        </div>
+
         <div style="display:grid;gap:20px">
           <div class="card">
             <div class="card-header"><div><h3>Identificação do Processo</h3><p>Dados do processo administrativo e vínculo com a emenda</p></div></div>
@@ -56,7 +84,11 @@
               <div class="form-grid form-grid-3">
                 <div>
                   <label class="field-label">PA Emenda</label>
-                  <input type="text" v-model="form.pa_formalizacao" placeholder="Ex: PA-2025/0042"/>
+                  <input type="text" v-model="form.pa_emenda" placeholder="Ex: PA-E-2025/0042"/>
+                </div>
+                <div>
+                  <label class="field-label">PA Formalização</label>
+                  <input type="text" v-model="form.pa_formalizacao" placeholder="Ex: PA-F-2025/0042"/>
                 </div>
                 <div>
                   <label class="field-label">Tipo de Instrumento<span class="field-required">*</span></label>
@@ -68,12 +100,32 @@
                   </select>
                 </div>
                 <div>
-                  <label class="field-label">Número da Emenda</label>
+                  <label class="field-label">N° (Número da Emenda)</label>
                   <input type="text" v-model="form.numero_emenda" placeholder="Ex: Emenda 01/2025"/>
+                </div>
+                <div>
+                  <label class="field-label">Vereador Proponente</label>
+                  <input type="text" v-model="form.vereador" placeholder="Nome do Vereador"/>
                 </div>
                 <div>
                   <label class="field-label">Valor (R$)<span class="field-required">*</span></label>
                   <input type="text" :value="valorExibicao" @input="handleValorInput" placeholder="R$ 0,00" required />
+                </div>
+                <div>
+                  <label class="field-label">Emenda Alterada?</label>
+                  <select v-model="form.emenda_alterada">
+                    <option value="">Selecione…</option>
+                    <option value="Sim">Sim</option>
+                    <option value="Não">Não</option>
+                  </select>
+                </div>
+                <div style="grid-column: span 3">
+                  <label class="field-label">Justificativa da Emenda</label>
+                  <textarea v-model="form.justificativa" placeholder="Justificativa informada no processo..." rows="2" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s;"></textarea>
+                </div>
+                <div style="grid-column: span 3">
+                  <label class="field-label">Histórico (Anotações gerais do processo)</label>
+                  <textarea v-model="form.historico" placeholder="Eventos importantes, tramitações, etc..." rows="2" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s;"></textarea>
                 </div>
               </div>
             </div>
@@ -199,7 +251,7 @@
 
         <div style="display:grid;gap:20px">
           <div class="card">
-            <div class="card-header"><div><h3>Unidade Executora (Filial)</h3><p>Identifica qual filial executará este contrato</p></div></div>
+            <div class="card-header"><div><h3>Unidade Executora</h3><p>Identifica quem executará este contrato</p></div></div>
             <div class="card-body">
               <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:20px">
                 <div class="form-grid form-grid-3">
@@ -275,6 +327,33 @@
                     </label>
                   </div>
                 </div>
+                
+                <div class="form-grid form-grid-3">
+                  <div>
+                    <label class="field-label">Atendimento (Descrição)</label>
+                    <input type="text" v-model="form.parceria.atendimento_descricao" placeholder="Descrição do Atendimento" />
+                  </div>
+                  <div>
+                    <label class="field-label">Meta (Mês)</label>
+                    <input type="text" v-model="form.parceria.meta_mes_atendimentos" placeholder="960 Atendimentos" />
+                  </div>
+                  <div>
+                    <label class="field-label">Responsável pela Entidade</label>
+                    <input type="text" v-model="form.parceria.responsavel_entidade" placeholder="Nome do Responsável" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div><h3>Metas por Especialidade (Numérico)</h3><p>Defina a quantidade meta mensal para cada especialidade</p></div></div>
+            <div class="card-body">
+              <div class="form-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+                <div v-for="esp in listaEspecialidades" :key="esp" style="display: flex; flex-direction: column; gap: 4px;">
+                  <label class="field-label" style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" :title="esp">{{ esp.replace('\n', ' ') }}</label>
+                  <input type="number" v-model="form.parceria.especialidades[esp]" placeholder="0" min="0" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; outline: none; transition: border-color 0.2s;" />
+                </div>
               </div>
             </div>
           </div>
@@ -332,6 +411,20 @@
           <div class="card">
             <div class="card-header"><div><h3>Configuração do Repasse</h3></div></div>
             <div class="card-body">
+              <div class="form-grid form-grid-3" style="margin-bottom: 20px;">
+                <div>
+                  <label class="field-label">CÓD. SCIM</label>
+                  <input type="number" v-model="form.cod_scim" placeholder="Apenas números" />
+                </div>
+                <div>
+                  <label class="field-label">P.A. EMPENHO</label>
+                  <input type="text" v-model="form.pa_empenho" placeholder="52456/2025" />
+                </div>
+                <div>
+                  <label class="field-label">OBJETO</label>
+                  <input type="text" v-model="form.objeto_descricao" placeholder="TEA - Atendimento indicados..." />
+                </div>
+              </div>
               <div class="form-grid form-grid-3">
                 <div>
                   <label class="field-label">Valor Total do Repasse (R$)<span class="field-required">*</span></label>
@@ -548,6 +641,142 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { validarCNPJ, apenasDigitos, validarCPF, parseCnpj } from '~/utils/validadores'
 
+const arrastando = ref(false)
+const importando = ref(false)
+const importMsg = ref('')
+const importErro = ref('')
+
+function onDrop(e: DragEvent) {
+  arrastando.value = false
+  const arquivo = e.dataTransfer?.files?.[0]
+  if (arquivo) importarArquivo(arquivo)
+}
+
+function onSelecionarArquivo(e: Event) {
+  const arquivo = (e.target as HTMLInputElement).files?.[0]
+  if (arquivo) importarArquivo(arquivo)
+}
+
+function formTemDados(): boolean {
+  return !!(form.razao_social || form.cnpj || form.valor || form.pa_emenda || form.numero_emenda)
+}
+
+async function importarArquivo(arquivo: File) {
+  importMsg.value = ''; importErro.value = ''
+  const ext = arquivo.name.toLowerCase()
+  if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls') && !ext.endsWith('.csv')) {
+    importErro.value = 'Formato inválido. Use .xlsx, .xls ou .csv.'
+    return
+  }
+  if (formTemDados() && !confirm('Isto vai preencher/sobrescrever os campos com os dados do arquivo. Continuar?')) {
+    return
+  }
+
+  importando.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', arquivo)
+    const resp = await fetch('/api/import/planilha', { method: 'POST', body: fd })
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}))
+      throw new Error(err.detail || 'Falha ao ler o arquivo.')
+    }
+    const data = await resp.json()
+    const qtd = aplicarImportacao(data)
+    importMsg.value = `Importado: ${qtd} campo(s) preenchido(s).` +
+      (data.avisos?.length ? ' ' + data.avisos.join(' ') : '')
+  } catch (e: any) {
+    importErro.value = e?.message || 'Erro ao importar o arquivo.'
+  } finally {
+    importando.value = false
+  }
+}
+
+function aplicarImportacao(data: any): number {
+  let n = 0
+  const f = data.formalizacao || {}
+
+  const diretos = [
+    'razao_social', 'cnpj', 'situacao', 'historico', 'pa_emenda', 'localizacao_pa_emenda',
+    'emenda_alterada', 'pa_formalizacao', 'numero_emenda', 'vereador', 'justificativa',
+    'cod_scim', 'pa_empenho', 'objeto_descricao', 'responsavel_nome'
+  ]
+  for (const k of diretos) {
+    if (f[k] !== undefined && f[k] !== null && f[k] !== '') { (form as any)[k] = f[k]; n++ }
+  }
+  if (f.valor !== undefined && f.valor !== null) { form.valor = Number(f.valor); n++ }
+
+  const extras = ['email_contato', 'telefone', 'endereco', 'cpf_representante']
+  for (const k of extras) {
+    if (f[k] !== undefined && f[k] !== null && f[k] !== '') {
+      (form.configuracoes_extras as any)[k] = f[k]; n++
+    }
+  }
+
+  if (data.parceria) n += aplicarParceria(data.parceria)
+  if (Array.isArray(data.repasses) && data.repasses.length) {
+    const fr = data.repasses[0]
+    if (fr.repasse_vencimento || fr.repasse_data_pagamento) {
+      form.configuracoes_extras.data_primeiro_repasse = fr.repasse_vencimento || fr.repasse_data_pagamento
+      n++
+    }
+    n += aplicarRepasses(data.repasses)
+  }
+
+  return n
+}
+
+function aplicarParceria(p: any): number {
+  let n = 0
+  const campos = ['ajuste_termo', 'gestor_parceria', 'projeto', 'inicio_atividades',
+    'termino_atividades', 'meta_mes_atendimentos', 'atendimento_descricao', 'responsavel_entidade']
+  for (const k of campos) {
+    if (p[k] !== undefined && p[k] !== null && p[k] !== '') { (form.parceria as any)[k] = p[k]; n++ }
+  }
+  if (p.categorias && typeof p.categorias === 'object') {
+    const mapped: any = {}
+    if (p.categorias['Saúde Mental']) mapped['Saúde Mental'] = true
+    if (p.categorias['Fisioterapia']) mapped['Fisioterapia'] = true
+    if (p.categorias['Fono'] || p.categorias['Fonoaudiologia']) mapped['Fono'] = true
+    if (p.categorias['Animal'] || p.categorias['Causa Animal']) mapped['Animal'] = true
+    if (p.categorias['Outros']) mapped['Outros'] = true
+
+    form.parceria.categorias = {
+      'Saúde Mental': !!mapped['Saúde Mental'],
+      'Fisioterapia': !!mapped['Fisioterapia'],
+      'Fono': !!mapped['Fono'],
+      'Animal': !!mapped['Animal'],
+      'Outros': !!mapped['Outros']
+    }
+    n++
+  }
+  if (p.especialidades && typeof p.especialidades === 'object') {
+    form.parceria.especialidades = { ...p.especialidades }
+    n++
+  }
+  return n
+}
+
+function aplicarRepasses(lista: any[]): number {
+  form.repasses = lista.map((r: any) => ({
+    ...r,
+    repasse_parcela: Number(r.repasse_parcela || 0),
+    repasse_parcela_texto: Number(r.repasse_parcela || 0)
+      .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    repasse_vencimento: r.repasse_vencimento || '',
+  }))
+  form.configuracoes_extras.numero_parcelas = lista.length
+  return form.repasses.length
+}
+
+function baixarModeloImportacao(formato: 'xlsx' | 'csv' = 'xlsx') {
+  const link = document.createElement('a')
+  link.href = `/api/import/modelo?formato=${formato}`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
 const props = withDefaults(defineProps<{
   activeScreen?: string
   modo?: 'criar' | 'editar'
@@ -603,10 +832,17 @@ const carregarEntidade = async (id: string) => {
     form.parceria.projeto = p.projeto || ''
     form.parceria.inicio_atividades = p.inicio_atividades || ''   // 'YYYY-MM-DD'
     form.parceria.termino_atividades = p.termino_atividades || ''
-    form.parceria.meta_mes_atendimentos = p.meta_mes_atendimentos || 0
+    form.parceria.meta_mes_atendimentos = p.meta_mes_atendimentos || ''
     form.parceria.atendimento_descricao = p.atendimento_descricao || ''
     form.parceria.responsavel_entidade = p.responsavel_entidade || ''
-    form.parceria.categorias = p.categorias || {}
+    const pc = p.categorias || {}
+    form.parceria.categorias = {
+      'Saúde Mental': !!(pc['Saúde Mental']),
+      'Fisioterapia': !!(pc['Fisioterapia']),
+      'Fono': !!(pc['Fono'] || pc['Fonoaudiologia']),
+      'Animal': !!(pc['Animal'] || pc['Causa Animal']),
+      'Outros': !!(pc['Outros'])
+    }
     form.parceria.especialidades = p.especialidades || {}
 
     // Repasses
@@ -661,7 +897,7 @@ interface ParceriaForm {
   projeto: string
   categorias: Record<string, boolean>
   atendimento_descricao: string
-  meta_mes_atendimentos: number | null
+  meta_mes_atendimentos: string | null
   responsavel_entidade: string
   especialidades: Record<string, number>
 }
@@ -708,6 +944,15 @@ const poolEspecialidades = [
   'Pediatria', 'Equoterapia', 'Pilates', 'Saúde Mental'
 ]
 
+const listaEspecialidades = [
+  "Academia Clínica", "Acupuntura", "Assistente Social", "Atividade Educativa",
+  "Educador Físico", "Fisio", "Fono", "Hidroginástica/\nHidroterapia", "Massoterapeuta",
+  "Médico (Neurologista)", "Musicoterapia", "Neuropediatra", "Neuropsicologia",
+  "Nutricionista", "Odonto", "Oficinas Lúdicas", "Oftalmologia", "Ortopedista",
+  "Pediatria", "Pilates", "Psicologia", "Psicanalista", "Psiquiatria",
+  "Psicomotricista", "Psicopedagogo", "Práticas Integrativas", "Reflexologia", "T.O.", "Veterinário"
+]
+
 // Passo atual do Stepper
 const currentStep = ref(1)
 
@@ -752,12 +997,12 @@ const form = reactive<EntityForm>({
     categorias: {
       'Saúde Mental': false,
       'Fisioterapia': false,
-      'Fonoaudiologia': false,
-      'Causa Animal': false,
+      'Fono': false,
+      'Animal': false,
       'Outros': false
     },
     atendimento_descricao: '',
-    meta_mes_atendimentos: null,
+    meta_mes_atendimentos: '',
     responsavel_entidade: '',
     especialidades: {}
   },
@@ -1428,12 +1673,12 @@ const resetForm = () => {
   form.parceria.categorias = {
     'Saúde Mental': false,
     'Fisioterapia': false,
-    'Fonoaudiologia': false,
-    'Causa Animal': false,
+    'Fono': false,
+    'Animal': false,
     'Outros': false
   }
   form.parceria.atendimento_descricao = ''
-  form.parceria.meta_mes_atendimentos = null
+  form.parceria.meta_mes_atendimentos = ''
   form.parceria.responsavel_entidade = ''
   form.parceria.especialidades = {}
   form.repasses = []
@@ -1503,9 +1748,9 @@ const efetivarCadastro = async () => {
       vereador: form.vereador.trim() || null,
       justificativa: form.justificativa.trim() || null,
       valor: form.valor,
-      cod_scim: form.cod_scim.trim() || null,
-      pa_empenho: form.pa_empenho.trim() || null,
-      objeto_descricao: form.objeto_descricao.trim() || null,
+      cod_scim: form.cod_scim ? String(form.cod_scim).trim() : null,
+      pa_empenho: form.pa_empenho ? String(form.pa_empenho).trim() : null,
+      objeto_descricao: form.objeto_descricao ? String(form.objeto_descricao).trim() : null,
       
       parceria: {
         ajuste_termo: form.parceria.ajuste_termo.trim() || null,
@@ -1515,7 +1760,7 @@ const efetivarCadastro = async () => {
         projeto: form.parceria.projeto.trim() || null,
         categorias: form.parceria.categorias,
         atendimento_descricao: form.parceria.atendimento_descricao.trim() || null,
-        meta_mes_atendimentos: form.parceria.meta_mes_atendimentos || 0,
+        meta_mes_atendimentos: form.parceria.meta_mes_atendimentos || "",
         responsavel_entidade: form.parceria.responsavel_entidade.trim() || null,
         especialidades: form.parceria.especialidades
       },
@@ -1585,12 +1830,18 @@ const efetivarCadastro = async () => {
 const exportEtapa = async (etapa: string) => {
   try {
     if (ehEdicao.value && props.entidadeId) {
+      const response = await fetch(`/api/export/entidade/${props.entidadeId}?etapa=${etapa}`)
+      if (!response.ok) throw new Error('Falha ao exportar planilha Excel')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = `/api/export/entidade/${props.entidadeId}?etapa=${etapa}`
-      link.download = `Prefinance_${(form.razao_social || 'Entidade').replace(/ /g, '_')}_${etapa}.xlsx`
+      link.href = url
+      const secao = etapa === 'financeiro' ? 'Controle Financeiro' : (etapa === 'parceria' ? 'Dados da Parceria' : 'Formalização')
+      link.download = `${form.razao_social || 'Entidade'} - ${secao}.xlsx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
       return
     }
 
@@ -1632,6 +1883,12 @@ const exportEtapa = async (etapa: string) => {
 }
 </script>
 <style scoped>
+.import-drop {
+  border: 2px dashed #93c5fd; border-radius: 12px; padding: 18px; text-align: center;
+  background: #f8fafc; cursor: pointer; transition: all .2s ease; margin-bottom: 16px;
+}
+.import-drop.is-over { background: #eff6ff; border-color: #0b5394; }
+
 .entity-create-container {
   width: 100%;
 }

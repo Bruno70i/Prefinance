@@ -191,19 +191,22 @@ def build_sheet_parceria(ws, entidades):
         inicio = fmt_date(ent.get("inicio_atividades"))
         termino = fmt_date(ent.get("termino_atividades"))
         
-        cats_db = ent.get("categorias") or []
+        cats_db = ent.get("categorias") or {}
         if isinstance(cats_db, str):
             import json
             try:
                 cats_db = json.loads(cats_db)
             except:
-                cats_db = [cats_db]
-        if not isinstance(cats_db, list):
-            cats_db = []
-            
+                cats_db = {}
+        
         cats_values = []
         for cat in categorias:
-            cats_values.append("X" if cat in cats_db else "")
+            if isinstance(cats_db, dict):
+                cats_values.append("X" if cats_db.get(cat) else "")
+            elif isinstance(cats_db, list):
+                cats_values.append("X" if cat in cats_db else "")
+            else:
+                cats_values.append("")
             
         esp_db = ent.get("especialidades") or {}
         if isinstance(esp_db, str):
@@ -274,9 +277,18 @@ def build_sheet_parceria(ws, entidades):
 
 def build_sheet_repasse(ws, entidade, repasses):
     rs = entidade.get("razao_social") or "REPASSE"
-    for c in ['\\', '/', '?', '*', '[', ']']:
+    for c in ['\\', '/', '?', '*', '[', ']', ':']:
         rs = rs.replace(c, '')
-    ws.title = rs[:31]
+    base_title = "Repasse e Prestação de contas"
+    
+    sheet_title = base_title
+    counter = 1
+    if hasattr(ws, 'parent') and ws.parent:
+        while sheet_title in ws.parent.sheetnames and ws.parent[sheet_title] != ws:
+            sheet_title = f"{base_title[:22]}_{counter}"
+            counter += 1
+            
+    ws.title = sheet_title
     
     inicio_dt = entidade.get("inicio_atividades")
     ano_base = None

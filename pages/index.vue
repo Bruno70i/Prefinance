@@ -27,10 +27,27 @@
         <span class="nav-num">3</span>
         <div><div>Controle Financeiro</div><div class="nav-label-sub">Repasses e prestação de contas</div></div>
       </button>
-      <div class="sidebar-footer">
-        <div class="user-card">
-          <div class="user-avatar">AS</div>
-          <div class="user-info"><div class="u-name">Ana Souza</div><div class="u-role">Gestora de Contratos</div></div>
+      <div class="sidebar-footer" style="padding: 16px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 12px; background: #f8fafc;">
+        <div class="user-card" style="display: flex; align-items: center; gap: 10px;">
+          <div class="user-avatar" style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%); color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; box-shadow: 0 2px 4px rgba(29,78,216,0.15);">
+            {{ obterIniciais(usuario?.nome || usuario?.username || 'U') }}
+          </div>
+          <div class="user-info" style="flex: 1; min-width: 0;">
+            <div class="u-name" style="font-weight: 700; color: #0f172a; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              {{ usuario?.nome || usuario?.username || 'Usuário' }}
+            </div>
+            <div class="u-role" style="color: #475569; font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">
+              {{ isAdmin ? 'Administrador' : 'Colaborador' }}
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button v-if="isAdmin" @click="navigateTo('/admin')" class="btn btn-ghost btn-sm" style="flex: 1; padding: 8px; font-size: 12px; font-weight: 600; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; cursor: pointer; transition: all 0.2s;">
+            Painel Admin
+          </button>
+          <button @click="sair" class="btn btn-ghost btn-sm" style="flex: 1; padding: 8px; font-size: 12px; font-weight: 600; color: #c53030; border: 1px solid #feb2b2; border-radius: 8px; background: #fff5f5; cursor: pointer; transition: all 0.2s;">
+            Sair
+          </button>
         </div>
       </div>
     </aside>
@@ -65,11 +82,28 @@
         </div>
       </div>
     </div>
+    <AssistenteIA />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useAuth } from '~/composables/useAuth'
+
+const { usuario, isAdmin, logout } = useAuth()
+
+const sair = async () => {
+  await logout()
+  await navigateTo('/login')
+}
+
+const obterIniciais = (nomeCompleto: string) => {
+  const partes = nomeCompleto.trim().split(/\s+/)
+  if (partes.length >= 2) {
+    return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
+  }
+  return partes[0] ? partes[0].slice(0, 2).toUpperCase() : 'U'
+}
 
 const activeScreen = ref('dashboard')
 const editId = ref<string | null>(null)
