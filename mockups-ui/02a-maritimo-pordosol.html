@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PreFinance — Marítimo · Pôr do Sol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --azul:#13A0B0; --azul-esc:#0A3D73; --azul-prof:#072A52;
+    --vermelho:#E0241F; --ouro:#FBBE12; --laranja:#F5791E; --laranja2:#FF9A3D;
+    --tinta:#15212E; --cinza:#5C6B7A; --linha:#E3EAF1; --bg:#F3F0EC; --card:#FFFFFF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);color:var(--tinta);display:flex;min-height:100vh}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;background:
+    radial-gradient(900px 420px at 82% -6%, rgba(245,121,30,.14), transparent),
+    radial-gradient(700px 380px at 8% 106%, rgba(224,36,31,.10), transparent), var(--bg)}
+  .sidebar{width:252px;background:linear-gradient(180deg,#14304f,#0a1b30);color:#cfe0f1;display:flex;flex-direction:column;padding:22px 16px;position:relative;overflow:hidden}
+  .sidebar::after{content:"";position:absolute;left:0;right:0;bottom:-30px;height:130px;background:
+    radial-gradient(130px 70px at 35% 50%, rgba(251,190,18,.26), transparent),
+    radial-gradient(130px 70px at 78% 60%, rgba(245,121,30,.22), transparent)}
+  .brand{padding:6px 8px 18px;border-bottom:1px solid rgba(255,255,255,.12);position:relative;z-index:1}
+  .brand .org{font-size:10px;letter-spacing:.12em;font-weight:700;color:var(--ouro);text-transform:uppercase}
+  .brand h1{font-size:27px;font-weight:800;color:#fff;margin-top:6px}
+  .brand p{font-size:11px;color:#c6b8a4;margin-top:2px}
+  .navlabel{font-size:10px;letter-spacing:.1em;color:#9a8c78;text-transform:uppercase;margin:20px 8px 8px;position:relative;z-index:1}
+  .nav{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:11px;cursor:pointer;color:#cdbfa9;font-size:13px;font-weight:500;margin-bottom:3px;position:relative;z-index:1}
+  .nav .ic{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.10);display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+  .nav small{display:block;color:#9a8c78;font-weight:400;font-size:11px}
+  .nav.active{background:linear-gradient(90deg,rgba(251,190,18,.24),rgba(245,121,30,.14));color:#fff;font-weight:700}
+  .nav.active .ic{background:linear-gradient(135deg,var(--ouro),var(--laranja));color:#3a2400}
+  .userbox{margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,.12);position:relative;z-index:1}
+  .user{display:flex;align-items:center;gap:10px}
+  .avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--ouro),var(--laranja));color:#3a2400;display:grid;place-items:center;font-weight:800;font-size:13px}
+  .user b{font-size:13px;color:#fff}.user span{font-size:10px;color:var(--ouro);font-weight:700}
+  .userbtns{display:flex;gap:8px;margin-top:12px}
+  .ubtn{flex:1;padding:8px;border-radius:9px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);font-size:12px;font-weight:600;cursor:pointer;color:#efe6d8}
+  .ubtn.danger{color:#fff;background:rgba(224,36,31,.9);border-color:transparent}
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:22px 30px;background:linear-gradient(100deg,var(--laranja) 0%,var(--vermelho) 58%,var(--ouro) 128%);color:#fff;position:relative;overflow:hidden}
+  .topbar::after{content:"";position:absolute;right:-30px;top:-50px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,233,160,.55),transparent 62%)}
+  .topbar h2{font-size:20px;font-weight:800;position:relative}
+  .crumb{font-size:12px;color:#ffe7cf;margin-top:2px;position:relative}
+  .btn{border:none;border-radius:11px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;position:relative}
+  .btn-primary{background:linear-gradient(135deg,#fff,#ffe7cf);color:#a23410;box-shadow:0 8px 20px rgba(0,0,0,.18)}
+  .body{padding:24px 30px;overflow-y:auto}
+  .search{background:var(--card);border:1px solid var(--linha);border-radius:16px;padding:18px 20px;margin-bottom:22px;box-shadow:0 10px 30px rgba(120,70,20,.06)}
+  .search .lab{font-size:10px;letter-spacing:.1em;color:#a59683;font-weight:700;text-transform:uppercase}
+  .search .field{margin-top:10px;display:flex;align-items:center;gap:10px;border:2px solid var(--linha);border-radius:12px;padding:13px 14px}
+  .search input{border:none;outline:none;flex:1;font-size:14px;background:none}
+  .kbd{font-size:11px;color:#a59683;border:1px solid var(--linha);border-radius:6px;padding:2px 7px}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:22px}
+  .kpi{border-radius:18px;padding:22px;color:#fff;position:relative;overflow:hidden;box-shadow:0 14px 30px rgba(150,80,20,.18)}
+  .kpi.b{background:linear-gradient(135deg,#13A0B0,#0A6E7E)}
+  .kpi.g{background:linear-gradient(135deg,var(--ouro),var(--laranja));color:#3a2400}
+  .kpi.r{background:linear-gradient(135deg,var(--vermelho),#8c1410)}
+  .kpi::after{content:"";position:absolute;right:-30px;bottom:-50px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.13)}
+  .kpi .top{display:flex;justify-content:space-between;align-items:center}
+  .kpi .ico{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:19px}
+  .tag{font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.22)}
+  .kpi.g .tag{background:rgba(0,0,0,.12)}
+  .kpi .val{font-size:31px;font-weight:800;margin:16px 0 2px}
+  .kpi .lab{font-size:13px;font-weight:700;opacity:.95}
+  .kpi .sub{font-size:11px;opacity:.82;margin-top:3px}
+  .card{background:var(--card);border:1px solid var(--linha);border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(120,70,20,.06)}
+  .card .head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--linha)}
+  .card .head h3{font-size:15px;font-weight:800}.card .head p{font-size:12px;color:var(--cinza)}
+  .pills{display:flex;gap:8px}
+  .pill{font-size:12px;font-weight:700;padding:7px 13px;border-radius:20px;border:1px solid var(--linha);background:#fff;color:var(--cinza);cursor:pointer}
+  .pill.on{background:linear-gradient(135deg,var(--laranja),var(--vermelho));color:#fff;border-color:transparent}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:10px;letter-spacing:.07em;color:#a59683;text-transform:uppercase;padding:14px 22px;border-bottom:1px solid var(--linha)}
+  td{padding:15px 22px;font-size:13px;border-bottom:1px solid #F2ECE4}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#FBF8F4}
+  .mono{font-family:ui-monospace,monospace;font-weight:700;color:#a23410}
+  .badge{font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;display:inline-flex;align-items:center;gap:6px}
+  .bd-fom{background:linear-gradient(135deg,rgba(245,121,30,.18),rgba(245,121,30,.07));color:#a23410}
+  .bd-fom::before,.bd-con::before{content:"";width:7px;height:7px;border-radius:50%}
+  .bd-fom::before{background:var(--laranja)}
+  .bd-con{background:linear-gradient(135deg,rgba(251,190,18,.24),rgba(245,121,30,.10));color:#8a5a00}
+  .bd-con::before{background:var(--ouro)}
+  .act{display:flex;gap:7px}
+  .a{font-size:12px;font-weight:700;padding:7px 13px;border-radius:9px;border:1px solid var(--linha);background:#fff;cursor:pointer;color:var(--tinta)}
+  .a.exp{color:#fff;background:linear-gradient(135deg,var(--laranja),var(--laranja2));border-color:transparent}
+  .a.del{color:var(--vermelho);border-color:rgba(224,36,31,.25)}
+  .cria{font-size:12px;color:#a23410;font-weight:700;background:none;border:none;cursor:pointer;text-decoration:underline dotted}
+  .fab{position:fixed;right:26px;bottom:26px;background:linear-gradient(135deg,var(--laranja),var(--ouro));color:#3a2400;padding:14px 22px;border-radius:30px;font-weight:800;font-size:13px;box-shadow:0 12px 28px rgba(245,121,30,.5);border:none;cursor:pointer}
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><div class="org">Secretaria de Saúde</div><h1>PreFinance</h1><p>Gestão de Parcerias — OSC/ONG</p></div>
+    <div class="navlabel">Visão Geral</div>
+    <div class="nav active"><span class="ic">▤</span><div>Dashboard de Consulta<small>Visão geral e busca</small></div></div>
+    <div class="navlabel">Módulos</div>
+    <div class="nav"><span class="ic">1</span><div>Cadastro de Formalização<small>Dados jurídicos da entidade</small></div></div>
+    <div class="nav"><span class="ic">2</span><div>Dados da Parceria<small>Contrato, filial e metas</small></div></div>
+    <div class="nav"><span class="ic">3</span><div>Controle Financeiro<small>Repasses e prestação de contas</small></div></div>
+    <div class="userbox">
+      <div class="user"><div class="avatar">BR</div><div><b>bruno</b><br><span>ADMINISTRADOR</span></div></div>
+      <div class="userbtns"><button class="ubtn">Painel Admin</button><button class="ubtn danger">Sair</button></div>
+    </div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div><h2>Dashboard de Consulta</h2><div class="crumb">PreFinance › Início</div></div>
+      <button class="btn btn-primary">＋ Nova Parceria</button>
+    </div>
+    <div class="body">
+      <div class="search">
+        <div class="lab">🔍 Busca Principal</div>
+        <div class="field"><span>🔎</span><input placeholder="Digite o Processo Administrativo (PA) ou CNPJ Raiz para pesquisar..."><span class="kbd">⌘ K</span></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi b"><div class="top"><div class="ico">📄</div><span class="tag">Total</span></div><div class="val">4</div><div class="lab">Total de Parcerias</div><div class="sub">Clique para ver todas</div></div>
+        <div class="kpi g"><div class="top"><div class="ico">✅</div><span class="tag">Ativas</span></div><div class="val">4</div><div class="lab">Parcerias Ativas</div><div class="sub">Clique para filtrar</div></div>
+        <div class="kpi r"><div class="top"><div class="ico">💰</div><span class="tag">Geral</span></div><div class="val">R$ 2.392.222,12</div><div class="lab">Volume Repassado</div><div class="sub">Soma dos contratos</div></div>
+      </div>
+      <div class="card">
+        <div class="head"><div><h3>Parcerias Cadastradas</h3><p>4 registros</p></div>
+          <div class="pills"><span class="pill on">Todos</span><span class="pill">● Ativa</span><span class="pill">● Em Análise</span></div></div>
+        <table>
+          <thead><tr><th>Nº PA</th><th>Entidade</th><th>CNPJ</th><th>Resp. Legal</th><th>Status</th><th>Criado por</th><th>Ações</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">ffewf23</td><td><b>41.784.320 ROBERTO DE OLIVEIRA GOULART</b></td><td>41784320000167</td><td>Bruno silva</td><td><span class="badge bd-fom">Termo de Fomento</span></td><td><button class="cria">bruno</button></td><td class="act"><button class="a">Editar</button><button class="a exp">Exportar</button><button class="a del">Excluir</button></td></tr>
+            <tr><td class="mono">01/2025</td><td><b>Casa do bruno</b></td><td>43755748000107</td><td>Bruno Nascimento de Paula Silva</td><td><span class="badge bd-fom">Termo de Fomento</span></td><td><button class="cria">bruno</button></td><td class="act"><button class="a">Editar</button><button class="a exp">Exportar</button><button class="a del">Excluir</button></td></tr>
+            <tr><td class="mono">26535/2025</td><td><b>Formando Cidadão</b></td><td>64635635355635</td><td>Daniele</td><td><span class="badge bd-con">Convênio</span></td><td><button class="cria">bruno</button></td><td class="act"><button class="a">Editar</button><button class="a exp">Exportar</button><button class="a del">Excluir</button></td></tr>
+            <tr><td class="mono">02/2020</td><td><b>PAULO HUBIRAJARA GULARTE EE</b></td><td>14762979000140</td><td>Bruno silvaz</td><td><span class="badge bd-fom">Termo de Fomento</span></td><td><button class="cria">bruno</button></td><td class="act"><button class="a">Editar</button><button class="a exp">Exportar</button><button class="a del">Excluir</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <button class="fab">💬 Assistente IA</button>
+</body>
+</html>

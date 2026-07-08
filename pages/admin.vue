@@ -3,7 +3,7 @@
     <!-- Cabeçalho do Painel -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px;">
       <div>
-        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #3b82f6; letter-spacing: 1px;">Área Administrativa</div>
+        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #F5791E; letter-spacing: 1px;">Área Administrativa</div>
         <h1 style="margin: 4px 0 0; color: #0f172a; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Painel de Gestão de Usuários</h1>
         <p style="margin: 4px 0 0; color: #64748b; font-size: 14px;">Gerencie os acessos, crie novos colaboradores e redefina credenciais do PreFinance.</p>
       </div>
@@ -272,8 +272,8 @@ const formatarData = (iso: string) => {
 }
 
 .inp:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #F5791E;
+  box-shadow: 0 0 0 3px rgba(245, 121, 30, 0.12);
   background: #ffffff;
 }
 

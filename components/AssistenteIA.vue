@@ -1,7 +1,14 @@
 <template>
   <div>
     <!-- Botão flutuante -->
-    <button v-if="!aberto" class="ia-fab" @click="aberto = true" title="Assistente PreFinance">
+    <button 
+      v-if="!aberto" 
+      class="ia-fab" 
+      @mousedown="startDrag"
+      @touchstart.passive="startDrag"
+      :style="fabStyle"
+      title="Assistente PreFinance"
+    >
       💬 Assistente IA
     </button>
 
@@ -73,12 +80,83 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, computed } from 'vue'
 import { useChat } from '~/composables/useChat'
 
 const aberto = ref(false)
 const texto = ref('')
 const corpo = ref<HTMLElement | null>(null)
+
+// Lógica de arrastar (Drag and drop)
+const position = ref({ x: 0, y: 0 })
+const isDragging = ref(false)
+const dragOffset = ref({ x: 0, y: 0 })
+const dragStartPos = ref({ x: 0, y: 0 })
+
+const startDrag = (event: MouseEvent | TouchEvent) => {
+  const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX
+  const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY
+  
+  dragStartPos.value = { x: clientX, y: clientY }
+  isDragging.value = true
+  
+  dragOffset.value = {
+    x: clientX - position.value.x,
+    y: clientY - position.value.y
+  }
+  
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('touchmove', onDrag, { passive: false })
+  document.addEventListener('touchend', stopDrag)
+}
+
+const onDrag = (event: MouseEvent | TouchEvent) => {
+  if (!isDragging.value) return
+  
+  const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX
+  const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY
+  
+  position.value = {
+    x: clientX - dragOffset.value.x,
+    y: clientY - dragOffset.value.y
+  }
+  
+  if (event.cancelable) {
+    event.preventDefault()
+  }
+}
+
+const stopDrag = (event: MouseEvent | TouchEvent) => {
+  isDragging.value = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+  
+  const endX = event && 'changedTouches' in event ? event.changedTouches[0].clientX : (event as MouseEvent)?.clientX
+  const endY = event && 'changedTouches' in event ? event.changedTouches[0].clientY : (event as MouseEvent)?.clientY
+  
+  if (endX !== undefined && endY !== undefined) {
+    const dx = endX - dragStartPos.value.x
+    const dy = endY - dragStartPos.value.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    
+    if (distance < 5) {
+      aberto.value = true
+    }
+  } else {
+    aberto.value = true
+  }
+}
+
+const fabStyle = computed(() => {
+  return {
+    transform: `translate(${position.value.x}px, ${position.value.y}px)`,
+    transition: isDragging.value ? 'none' : 'transform 0.15s ease',
+    touchAction: 'none'
+  }
+})
 
 const { 
   mensagens, 
@@ -121,26 +199,30 @@ watch(mensagens, async () => {
   right: 24px;
   bottom: 85px;
   z-index: 1000;
-  background: linear-gradient(135deg, #0b5394, #073763);
-  color: #fff;
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  color: #ffffff;
   border: none;
   border-radius: 999px;
   padding: 14px 22px;
   font-weight: 600;
   font-size: 14px;
-  cursor: pointer;
-  box-shadow: 0 8px 25px rgba(11, 83, 148, 0.4);
-  transition: all 0.3s ease;
+  cursor: grab;
+  box-shadow: 0 8px 25px rgba(29, 78, 216, 0.4);
+  transition: all 0.3s ease, transform 0.15s ease;
   display: flex;
   align-items: center;
   gap: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  user-select: none;
+}
+
+.ia-fab:active {
+  cursor: grabbing;
 }
 
 .ia-fab:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(11, 83, 148, 0.5);
-  background: linear-gradient(135deg, #0d6efd, #0b5394);
+  box-shadow: 0 12px 30px rgba(29, 78, 216, 0.55);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
 }
 
 .ia-panel {
@@ -168,7 +250,7 @@ watch(mensagens, async () => {
   justify-content: space-between;
   align-items: center;
   padding: 14px 18px;
-  background: linear-gradient(135deg, #0b5394, #073763);
+  background: linear-gradient(100deg, #F5791E 0%, #E0241F 65%, #FBBE12 130%);
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -239,9 +321,9 @@ watch(mensagens, async () => {
 
 .loading-pulse {
   animation: pulse 1.5s infinite ease-in-out;
-  background: #f0f7ff;
-  border-left-color: #3b82f6;
-  color: #1d4ed8;
+  background: #FFF6E6;
+  border-left-color: #F5791E;
+  color: #A23410;
 }
 
 @keyframes pulse {
@@ -272,7 +354,7 @@ watch(mensagens, async () => {
 }
 
 .ia-msg.user .ia-bubble {
-  background: #0b5394;
+  background: linear-gradient(135deg, #F5791E, #E0241F);
   color: #ffffff;
   border-bottom-right-radius: 2px;
 }
@@ -351,7 +433,7 @@ watch(mensagens, async () => {
 
 .ia-btn-attach:hover {
   background: #f1f5f9;
-  color: #0b5394;
+  color: #A23410;
   border-color: #cbd5e1;
 }
 
@@ -368,11 +450,11 @@ watch(mensagens, async () => {
 }
 
 .ia-input-field:focus {
-  border-color: #0b5394;
+  border-color: #F5791E;
 }
 
 .ia-btn-send {
-  background: #0b5394;
+  background: linear-gradient(135deg, #F5791E, #E0241F);
   color: #fff;
   border: none;
   border-radius: 8px;

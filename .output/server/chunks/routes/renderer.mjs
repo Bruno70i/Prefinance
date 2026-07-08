@@ -1,5 +1,5 @@
 import { createRenderer, getRequestDependencies, getPreloadLinks, getPrefetchLinks } from 'vue-bundle-renderer/runtime';
-import { q as joinRelativeURL, A as useRuntimeConfig, m as getResponseStatusText, l as getResponseStatus, h as encodePath, e as defineRenderHandler, k as getQuery, c as createError, n as getRouteRules, r as joinURL, z as useNitroApp } from '../_/nitro.mjs';
+import { r as joinRelativeURL, B as useRuntimeConfig, n as getResponseStatusText, m as getResponseStatus, h as encodePath, e as defineRenderHandler, k as getQuery, c as createError, o as getRouteRules, s as joinURL, A as useNitroApp } from '../_/nitro.mjs';
 import { renderToString } from 'vue/server-renderer';
 import { createHead as createHead$1, propsToString, renderSSRHead } from 'unhead/server';
 import { stringify, uneval } from 'devalue';
@@ -76,7 +76,7 @@ function createHead(options = {}) {
 
 const NUXT_RUNTIME_PAYLOAD_EXTRACTION = false;
 
-const appHead = {"meta":[{"charset":"utf-8"},{"name":"viewport","content":"width=device-width, initial-scale=1"}],"link":[{"rel":"preconnect","href":"https://fonts.googleapis.com"},{"rel":"preconnect","href":"https://fonts.gstatic.com","crossorigin":""},{"rel":"stylesheet","href":"https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap"}],"style":[],"script":[],"noscript":[],"title":"PreFinance - Gestão de Entidades"};
+const appHead = {"meta":[{"charset":"utf-8"},{"name":"viewport","content":"width=device-width, initial-scale=1"}],"link":[{"rel":"preconnect","href":"https://fonts.googleapis.com"},{"rel":"preconnect","href":"https://fonts.gstatic.com","crossorigin":""},{"rel":"stylesheet","href":"https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"}],"style":[],"script":[],"noscript":[],"title":"PreFinance - Gestão de Entidades"};
 
 const appRootTag = "div";
 

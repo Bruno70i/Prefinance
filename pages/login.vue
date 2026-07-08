@@ -128,7 +128,7 @@ const entrar = async () => {
 }
 
 .logo-box {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #F5791E 0%, #E0241F 100%);
   width: 56px;
   height: 56px;
   border-radius: 12px;
@@ -204,13 +204,13 @@ const entrar = async () => {
 }
 
 .input-wrapper input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: #F5791E;
+  box-shadow: 0 0 0 3px rgba(245, 121, 30, 0.18);
   background: rgba(15, 23, 42, 0.8);
 }
 
 .input-wrapper input:focus + .input-icon {
-  color: #3b82f6;
+  color: #F5791E;
 }
 
 .error-alert {
@@ -228,7 +228,7 @@ const entrar = async () => {
 .btn-submit {
   width: 100%;
   padding: 13px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #F5791E 0%, #E0241F 100%);
   color: #ffffff;
   border: none;
   border-radius: 10px;
@@ -240,13 +240,13 @@ const entrar = async () => {
   justify-content: center;
   gap: 10px;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.2);
+  box-shadow: 0 4px 12px rgba(245, 121, 30, 0.3);
 }
 
 .btn-submit:hover {
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #E0241F 0%, #FBBE12 100%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 6px 16px rgba(245, 121, 30, 0.4);
 }
 
 .btn-submit:active {

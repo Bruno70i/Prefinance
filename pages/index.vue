@@ -1,11 +1,14 @@
 <template>
   <div>
+    <!-- ═══ SIDEBAR BACKDROP ═══ -->
+    <div v-if="sidebarAberta" class="sidebar-backdrop" @click="sidebarAberta = false"></div>
+
     <!-- ═══ SIDEBAR ═══ -->
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ 'sidebar-open': sidebarAberta }">
       <div class="sidebar-logo">
-        <div class="org-badge">Secretaria de Saúde</div>
+        <div class="org-badge">Bem Vindo</div>
         <h1>PreFinance</h1>
-        <p>Gestão de Parcerias — OSC/ONG</p>
+        <p>Gestão de Parcerias</p>
       </div>
       <div class="nav-section-label">Visão Geral</div>
       <button class="nav-item" :class="{ active: activeScreen === 'dashboard' }" @click="setScreen('dashboard')">
@@ -55,9 +58,18 @@
     <!-- ═══ MAIN ═══ -->
     <div class="main-content">
       <div class="top-bar">
-        <div class="top-bar-left">
-          <h2 id="topbar-title">{{ topbarTitle }}</h2>
-          <div class="breadcrumb" id="topbar-breadcrumb">PreFinance › {{ topbarBreadcrumb }}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="menu-toggle" @click="sidebarAberta = !sidebarAberta" aria-label="Abrir Menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="top-bar-left">
+            <h2 id="topbar-title">{{ topbarTitle }}</h2>
+            <div class="breadcrumb" id="topbar-breadcrumb">PreFinance › {{ topbarBreadcrumb }}</div>
+          </div>
         </div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-primary btn-sm" @click="novaParceria()">
@@ -91,6 +103,7 @@ import { ref, computed } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
 const { usuario, isAdmin, logout } = useAuth()
+const sidebarAberta = ref(false)
 
 const sair = async () => {
   await logout()
@@ -126,21 +139,25 @@ const topbarBreadcrumb = computed(() => {
 
 function setScreen(screen: string) {
   activeScreen.value = screen
+  sidebarAberta.value = false
 }
 
 function novaParceria() {
   editId.value = null
   activeScreen.value = 'formalizacao'
+  sidebarAberta.value = false
 }
 
 function openEntity(id: string) {
   editId.value = id
   activeScreen.value = 'formalizacao'
+  sidebarAberta.value = false
 }
 
 function onSalvo() {
   editId.value = null
   activeScreen.value = 'dashboard'
+  sidebarAberta.value = false
 }
 
 useHead({

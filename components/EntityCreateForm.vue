@@ -42,10 +42,16 @@
               <h2 style="font-size:20px;font-weight:700;color:#1e293b">Cadastro de Formalização</h2>
               <p style="font-size:13px;color:#94a3b8">Preencha os dados jurídicos para iniciar o cadastro</p>
             </div>
-            <button type="button" @click="exportEtapa('formalizacao')" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Exportar Etapa (Excel)
-            </button>
+            <div style="display:flex; gap:10px;">
+              <button type="button" class="btn btn-secondary btn-sm" @click.stop="baixarModeloImportacao('xlsx')" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar Modelo (Excel)
+              </button>
+              <button type="button" @click="exportEtapa('formalizacao')" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Exportar Etapa (Excel)
+              </button>
+            </div>
           </div>
         </div>
 
@@ -67,14 +73,6 @@
           <p v-if="importando" style="margin:8px 0 0; color:#0b5394; font-size:13px">Lendo arquivo…</p>
           <p v-if="importMsg" style="margin:8px 0 0; color:#16a34a; font-size:13px">✓ {{ importMsg }}</p>
           <p v-if="importErro" style="margin:8px 0 0; color:#ef4444; font-size:13px">⚠️ {{ importErro }}</p>
-        </div>
-        <div style="display:flex; gap:10px; align-items:center; margin-top:-6px; margin-bottom:16px">
-          <button type="button" class="btn btn-secondary btn-sm" @click.stop="baixarModeloImportacao('xlsx')">
-            ⬇️ Baixar modelo (Excel)
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" @click.stop="baixarModeloImportacao('csv')">
-            ⬇️ Baixar modelo (CSV)
-          </button>
         </div>
 
         <div style="display:grid;gap:20px">

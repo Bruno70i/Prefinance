@@ -12,7 +12,8 @@ export const useAuth = () => {
 
   const carregarMe = async () => {
     try {
-      usuario.value = await $fetch<UsuarioLogado>('/api/auth/me')
+      const headers = useRequestHeaders(['cookie']) as Record<string, string>
+      usuario.value = await $fetch<UsuarioLogado>('/api/auth/me', { headers })
     } catch {
       usuario.value = null
     } finally {

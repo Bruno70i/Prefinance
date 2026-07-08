@@ -2,8 +2,6 @@
 import { useAuth } from '~/composables/useAuth'
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  // Guarda apenas no cliente (o backend valida o token em cada chamada de API).
-  if (import.meta.server) return
 
   const { usuario, carregado, isAdmin, carregarMe } = useAuth()
   if (!carregado.value) await carregarMe()

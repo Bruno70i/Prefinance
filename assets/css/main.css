@@ -167,3 +167,224 @@ textarea{resize:vertical;min-height:80px}
 .step-line.done{background:#16a34a}
 
 @media(max-width:1280px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.form-grid-3{grid-template-columns:1fr 1fr}}
+
+/* ====================== TEMA PÔR DO SOL — INÍCIO ====================== */
+:root{
+  --pds-bg:#F3F0EC;
+  --pds-tinta:#15212E; --pds-cinza:#5C6B7A;
+  --pds-azul:#13A0B0; --pds-azul-esc:#0A6E7E;          /* teal (toque frio) */
+  --pds-vermelho:#E0241F; --pds-maroon:#8C1410;
+  --pds-ouro:#FBBE12; --pds-laranja:#F5791E; --pds-laranja2:#FF9A3D;
+  --pds-navy1:#14304F; --pds-navy2:#0A1B30;
+  --pds-cream:#FFE7CF; --pds-tinta-warm:#A23410;
+  --pds-side-txt:#CDBFA9; --pds-side-sub:#9A8C78;
+}
+
+/* Fundo quente + leve brilho (como o mockup) */
+body{ background:var(--pds-bg); }
+body::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(900px 420px at 82% -6%, rgba(245,121,30,.12), transparent),
+    radial-gradient(700px 380px at 8% 106%, rgba(224,36,31,.08), transparent);
+}
+
+/* Fonte */
+body,
+.btn, .filter-pill, .pg-btn,
+input[type=text], input[type=date], input[type=email], input[type=number],
+select, textarea, #main-search{
+  font-family:'Plus Jakarta Sans','DM Sans',sans-serif;
+}
+
+/* ── Sidebar (Pôr do Sol) ── */
+.sidebar{ background:linear-gradient(180deg,var(--pds-navy1),var(--pds-navy2)); border-right:1px solid rgba(255,255,255,.06); overflow:hidden; }
+.sidebar::after{ /* brilho quente no rodapé */
+  content:""; position:absolute; left:0; right:0; bottom:-30px; height:130px; pointer-events:none;
+  background:
+    radial-gradient(130px 70px at 35% 50%, rgba(251,190,18,.22), transparent),
+    radial-gradient(130px 70px at 78% 60%, rgba(245,121,30,.18), transparent);
+}
+.sidebar-logo{ border-bottom-color:rgba(255,255,255,.10); }
+.sidebar-logo h1{ color:#fff; }
+.sidebar-logo p{ color:var(--pds-side-sub); }
+.org-badge{ background:rgba(251,190,18,.14); color:var(--pds-ouro); }
+.nav-section-label{ color:var(--pds-side-sub); }
+
+.nav-item{ color:var(--pds-side-txt); }
+.nav-item:hover{ background:rgba(255,255,255,.05); color:#fff; }
+.nav-item.active{ background:linear-gradient(90deg,rgba(251,190,18,.24),rgba(245,121,30,.14)); color:#fff; }
+.nav-item.active::before{ background:linear-gradient(180deg,var(--pds-ouro),var(--pds-laranja)); }
+
+.nav-icon-wrap{ background:rgba(255,255,255,.10); }
+.nav-item.active .nav-icon-wrap{ background:linear-gradient(135deg,var(--pds-ouro),var(--pds-laranja)); color:#3A2400; }
+.nav-num{ background:rgba(255,255,255,.10); color:#fff; }
+.nav-item.active .nav-num{ background:linear-gradient(135deg,var(--pds-ouro),var(--pds-laranja)); color:#3A2400; }
+.nav-label-sub{ color:var(--pds-side-sub); }
+
+.sidebar-footer{ border-top-color:rgba(255,255,255,.10); }
+.u-name{ color:#fff; }
+.u-role{ color:var(--pds-side-sub); }
+.user-avatar{ background:linear-gradient(135deg,var(--pds-ouro),var(--pds-laranja)); color:#3A2400; }
+
+/* Botões do rodapé da sidebar (Painel Admin / Sair) legíveis no fundo escuro */
+.sidebar .btn-ghost{ color:#EFE6D8; border-color:rgba(255,255,255,.18); background:rgba(255,255,255,.06); }
+.sidebar .btn-ghost:hover{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.28); color:#fff; }
+
+/* ── Topbar (Pôr do Sol) ── */
+.top-bar{
+  background:linear-gradient(100deg,var(--pds-laranja) 0%,var(--pds-vermelho) 58%,var(--pds-ouro) 128%);
+  border-bottom:none; position:sticky; overflow:hidden;
+}
+.top-bar::after{ /* brilho de "sol" no canto direito */
+  content:""; position:absolute; right:-30px; top:-60px; width:220px; height:220px; border-radius:50%;
+  background:radial-gradient(circle, rgba(255,233,160,.5), transparent 62%); pointer-events:none;
+}
+.top-bar-left h2{ color:#fff; position:relative; z-index:1; }
+.breadcrumb{ color:#FFE7CF; position:relative; z-index:1; }
+
+/* "Nova Parceria" (btn-primary dentro da topbar) vira creme para contrastar */
+.top-bar .btn-primary{
+  background:linear-gradient(135deg,#fff,var(--pds-cream)); color:var(--pds-tinta-warm);
+  position:relative; z-index:1;
+}
+.top-bar .btn-primary:hover{ box-shadow:0 4px 12px rgba(0,0,0,.18); transform:translateY(-1px); }
+
+/* ── Busca: foco quente ── */
+#main-search:focus{ border-color:var(--pds-laranja); box-shadow:0 0 0 4px rgba(245,121,30,.12); }
+
+/* ── KPI cards: faixa de cor no topo ── */
+.kpi-grid{ display: flex !important; overflow-x: auto; scrollbar-width: thin; padding-bottom: 12px; }
+.kpi-grid::-webkit-scrollbar { height: 8px; }
+.kpi-grid::-webkit-scrollbar-track { background: transparent; }
+.kpi-grid::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.1); border-radius: 4px; }
+.kpi-grid .kpi-card { min-width: 340px; flex: 1 0 auto; }
+.kpi-grid .kpi-card::before{
+  content:""; position:absolute; top:0; left:0; right:0; height:4px; border-radius:12px 12px 0 0;
+}
+.kpi-grid .kpi-card:nth-child(1)::before{ background:linear-gradient(90deg,var(--pds-azul),var(--pds-azul-esc)); }
+.kpi-grid .kpi-card:nth-child(2)::before{ background:linear-gradient(90deg,var(--pds-ouro),var(--pds-laranja)); }
+.kpi-grid .kpi-card:nth-child(3)::before{ background:linear-gradient(90deg,var(--pds-vermelho),var(--pds-maroon)); }
+.kpi-card:hover{ border-color:var(--pds-ouro); box-shadow:0 10px 24px rgba(245,121,30,.14); }
+.kpi-card.active-filter{ border-color:var(--pds-laranja); }
+.kpi-card.active-filter::after{ background:linear-gradient(90deg,var(--pds-ouro),var(--pds-laranja)); }
+
+/* ── Tabela: hover quente ── */
+.data-table tbody tr:hover td{ background:#FBF8F4; }
+
+/* ── Filtros (pills) ── */
+.filter-pill:hover{ border-color:var(--pds-ouro); color:var(--pds-tinta-warm); background:#FFF6E6; }
+.filter-pill.active{ border-color:var(--pds-laranja); color:var(--pds-tinta-warm); background:#FFF1DF; }
+
+/* ── Paginação ── */
+.pg-btn:hover{ background:#FFF1DF; }
+.pg-btn.active{ background:linear-gradient(135deg,var(--pds-laranja),var(--pds-vermelho)); border-color:transparent; color:#fff; }
+
+/* ── Botão primário (em fundo claro) → gradiente quente ── */
+.btn-primary{ background:linear-gradient(135deg,var(--pds-ouro),var(--pds-laranja)); color:#3A2400; }
+.btn-primary:hover{ background:linear-gradient(135deg,var(--pds-laranja),var(--pds-vermelho)); color:#fff; box-shadow:0 6px 16px rgba(245,121,30,.32); transform:translateY(-1px); }
+
+/* ── Botão ghost (fora da sidebar): hover quente ── */
+.btn-ghost:hover{ background:#FFF6E6; border-color:var(--pds-ouro); color:var(--pds-tinta-warm); }
+
+/* ── Inputs: foco quente ── */
+input[type=text]:focus, input[type=date]:focus, input[type=email]:focus,
+input[type=number]:focus, select:focus, textarea:focus{
+  border-color:var(--pds-laranja); box-shadow:0 0 0 3px rgba(245,121,30,.12);
+}
+
+/* ── Context badge (telas 2 e 3) ── */
+.context-badge{ background:linear-gradient(135deg,#FFF6E6,#FFE9CF); border-color:#FBD89A; }
+.context-badge .cb-label{ color:#C98A2A; }
+.context-badge .cb-value{ color:var(--pds-tinta-warm); }
+.context-badge .cb-sep{ background:#FBD89A; }
+
+/* ── Step progress (wizard) ── */
+.step.active{ color:var(--pds-tinta-warm); }
+.step.active .step-circle{ border-color:var(--pds-laranja); background:linear-gradient(135deg,var(--pds-laranja),var(--pds-vermelho)); color:#fff; }
+
+/* ── Drop-zone (upload / importação) ── */
+.drop-zone:hover, .drop-zone.dragover{ border-color:var(--pds-laranja); background:#FFF6E6; }
+
+/* Aquecer os badges de status */
+.badge-ativa{ background:linear-gradient(135deg,rgba(245,121,30,.16),rgba(245,121,30,.06)); color:var(--pds-tinta-warm); }
+.badge-ativa .badge-dot{ background:var(--pds-laranja); }
+.badge-em_analise{ background:linear-gradient(135deg,rgba(251,190,18,.22),rgba(245,121,30,.10)); color:#8A5A00; }
+.badge-em_analise .badge-dot{ background:var(--pds-ouro); }
+
+/* ── KPIs coloridos (Faixa B) ── */
+.kpi-sun{ border:none; }
+.kpi-sun::before{ display:none; }                 /* dispensa a faixa do passo 04 */
+.kpi-sun:hover{ transform:translateY(-2px); box-shadow:0 14px 30px rgba(150,80,20,.20); }
+.kpi-sun .kpi-value, .kpi-sun .kpi-label, .kpi-sun .kpi-sub{ color:#fff; }
+.kpi-sun .kpi-icon-box{ background:rgba(255,255,255,.22) !important; }   /* vence o style inline */
+.kpi-sun .kpi-icon-box svg{ stroke:#fff; }        /* o stroke inline é atributo: CSS vence sem !important */
+.kpi-sun .kpi-trend{ background:rgba(255,255,255,.22); color:#fff; }
+
+.kpi-sun-teal{ background:linear-gradient(135deg,var(--pds-azul),var(--pds-azul-esc)); }
+.kpi-sun-red { background:linear-gradient(135deg,var(--pds-vermelho),var(--pds-maroon)); }
+.kpi-sun-gold{ background:linear-gradient(135deg,var(--pds-ouro),var(--pds-laranja)); }
+/* o cartão ouro pede texto escuro para legibilidade */
+.kpi-sun-gold .kpi-value, .kpi-sun-gold .kpi-label, .kpi-sun-gold .kpi-sub{ color:#3A2400; }
+.kpi-sun-gold .kpi-icon-box svg{ stroke:#3A2400; }
+.kpi-sun-gold .kpi-trend{ background:rgba(0,0,0,.12); color:#3A2400; }
+
+/* ── Responsividade (Menu Lateral, KPIs e Formulários) ── */
+.menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  padding: 8px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.2s;
+  position: relative;
+  z-index: 1001;
+}
+.menu-toggle:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1000;
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  .main-content {
+    margin-left: 0;
+  }
+  .menu-toggle {
+    display: flex;
+  }
+  .top-bar {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .form-grid-2, .form-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+  .page-body {
+    padding: 16px;
+  }
+  .search-hero {
+    padding: 16px 20px;
+  }
+}
+/* ======================  TEMA PÔR DO SOL — FIM  ====================== */
